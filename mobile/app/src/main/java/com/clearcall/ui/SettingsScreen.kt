@@ -8,6 +8,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -27,8 +33,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.DisposableEffect
 import com.clearcall.core.Prefs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +49,18 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     var nsEnabled by remember { mutableStateOf(prefs.noiseSuppressionEnabled) }
     var atten by remember { mutableFloatStateOf(prefs.attenuationLimitDb) }
+
+    // Re-check battery-optimization exemption whenever we return to this screen (the user may
+    // have toggled it in the system dialog we launch).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var batteryExempt by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) batteryExempt = isIgnoringBatteryOptimizations(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
 
     Scaffold(
         topBar = {
@@ -91,6 +113,35 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                 }
             }
+
+            if (!batteryExempt) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Reliable ringing", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Allow ClearCall to ignore battery optimizations so incoming calls ring " +
+                                "promptly even when the app is in the background.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Button(onClick = { requestIgnoreBatteryOptimizations(context) }) {
+                            Text("Allow")
+                        }
+                    }
+                }
+            }
         }
     }
+}
+
+private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+    val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    return pm.isIgnoringBatteryOptimizations(context.packageName)
+}
+
+@Suppress("BatteryLife") // intentional: a calling app has a legitimate need to ring in the background
+private fun requestIgnoreBatteryOptimizations(context: Context) {
+    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+        data = Uri.parse("package:${context.packageName}")
+    }
+    runCatching { context.startActivity(intent) }
 }

@@ -1,6 +1,8 @@
 package com.clearcall.call
 
 import android.content.Context
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.telecom.DisconnectCause
 import android.util.Log
 import com.clearcall.audio.NoiseSuppression
@@ -190,6 +192,32 @@ object CallManager {
         CallState.setMuted(newMuted)
     }
 
+    /**
+     * Route call audio to the loudspeaker vs the earpiece using the modern
+     * setCommunicationDevice API (minSdk 31). Best-effort and reconciled with LiveKit's own
+     * AudioSwitchHandler on real hardware — needs a device to verify Bluetooth interplay.
+     */
+    fun toggleSpeaker() {
+        val am = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val newOn = !CallState.speakerOn.value
+        runCatching {
+            if (newOn) {
+                val speaker = am.availableCommunicationDevices
+                    .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                if (speaker != null) am.setCommunicationDevice(speaker)
+            } else {
+                am.clearCommunicationDevice()
+            }
+        }
+        CallState.setSpeakerOn(newOn)
+    }
+
+    private fun clearAudioRouting() {
+        runCatching {
+            (appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager).clearCommunicationDevice()
+        }
+    }
+
     // ---- Internals ----
 
     private fun connectLiveKit(url: String, token: String, advertiseAnswered: Boolean = false) {
@@ -232,6 +260,7 @@ object CallManager {
         liveKitEventsJob?.cancel()
         liveKitEventsJob = null
         ringtonePlayer.stopAll()
+        clearAudioRouting()
         liveKit?.release()
         liveKit = null
         activeConnection?.let {

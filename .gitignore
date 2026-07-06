@@ -15,5 +15,6 @@ mobile/.gradle/
 mobile/build/
 mobile/app/build/
 mobile/local.properties
+mobile/keystore.properties
 *.keystore
 !debug.keystore

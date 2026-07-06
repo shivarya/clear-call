@@ -28,6 +28,9 @@ object CallState {
     private val _muted = MutableStateFlow(false)
     val muted: StateFlow<Boolean> = _muted.asStateFlow()
 
+    private val _speakerOn = MutableStateFlow(false)
+    val speakerOn: StateFlow<Boolean> = _speakerOn.asStateFlow()
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -43,6 +46,10 @@ object CallState {
         _muted.value = value
     }
 
+    fun setSpeakerOn(value: Boolean) {
+        _speakerOn.value = value
+    }
+
     fun setError(message: String?) {
         _errorMessage.value = message
     }
@@ -51,5 +58,6 @@ object CallState {
         _phase.value = CallPhase.IDLE
         _current.value = null
         _muted.value = false
+        _speakerOn.value = false
     }
 }

@@ -1,9 +1,20 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.gms.google-services")
+}
+
+// Release signing is read from a gitignored `keystore.properties` (never committed). When it's
+// absent (fresh clone / CI without the keystore), the release build falls back to the debug
+// keystore so it still assembles — just not with the real release identity.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val hasReleaseKeystore = keystorePropsFile.exists()
+val keystoreProps = Properties().apply {
+    if (hasReleaseKeystore) keystorePropsFile.inputStream().use { load(it) }
 }
 
 android {
@@ -26,6 +37,17 @@ android {
         )
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Reach the local `php -S localhost:8010` dev server via `adb reverse
@@ -35,9 +57,13 @@ android {
         }
         release {
             isMinifyEnabled = false
-            // No dedicated release keystore yet (personal sideload only, not Play Store) —
-            // reuse the auto-generated debug keystore so assembleRelease is installable.
-            signingConfig = signingConfigs.getByName("debug")
+            // Real release keystore when keystore.properties is present; otherwise fall back to
+            // the debug keystore so a fresh clone can still assemble a (non-distributable) release.
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             buildConfigField("String", "API_BASE_URL", "\"https://shivarya.dev/clear_call\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -38,6 +39,7 @@ fun CallScreen(onCallEnded: () -> Unit) {
     val phase by CallState.phase.collectAsState()
     val info by CallState.current.collectAsState()
     val muted by CallState.muted.collectAsState()
+    val speakerOn by CallState.speakerOn.collectAsState()
     val error by CallState.errorMessage.collectAsState()
 
     LaunchedEffect(phase) {
@@ -87,6 +89,20 @@ fun CallScreen(onCallEnded: () -> Unit) {
                             Icon(
                                 if (muted) Icons.Filled.MicOff else Icons.Filled.Mic,
                                 contentDescription = if (muted) "Unmute" else "Mute",
+                            )
+                        }
+                        FilledIconButton(
+                            onClick = { CallManager.toggleSpeaker() },
+                            colors = if (speakerOn) {
+                                IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            } else {
+                                IconButtonDefaults.filledIconButtonColors()
+                            },
+                            modifier = Modifier.size(56.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.VolumeUp,
+                                contentDescription = if (speakerOn) "Speaker on" else "Speaker off",
                             )
                         }
                     }
