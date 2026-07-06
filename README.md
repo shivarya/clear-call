@@ -124,8 +124,8 @@ None of these are committed (all are gitignored); supply your own:
   copy code; biometric lock.
 - ⏳ **DeepFilterNet3** on-device noise suppression in the LiveKit capture hook.
 - ⏳ In-call audio routing / device picker; call edge-case polish; release keystore.
-- ⏳ Personalized "only my voice" suppression (on-device speaker enrollment; no GPU).
-- ⏳ Native **iOS** app (Swift/SwiftUI, CallKit + PushKit, Apple Voice Isolation).
+- ⏳ "Isolate a voice" — target-speaker extraction from a provided sample (on-device; no GPU). Seam shipped; models to build — see [docs/VOICE_ISOLATION_TIER_B_PLAN.md](docs/VOICE_ISOLATION_TIER_B_PLAN.md).
+- ⏳ Native **iOS** app (Swift/SwiftUI, CallKit + PushKit, Apple Voice Isolation) — full build+deploy plan in [docs/IOS_APP_PLAN.md](docs/IOS_APP_PLAN.md).
 
 ## License
 

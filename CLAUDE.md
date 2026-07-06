@@ -18,6 +18,17 @@ Guidance for Claude Code when working inside `clear-call/`. A 1:1 internet calli
 
 **CRITICAL**: Always combine directory change and command in a single line, absolute Windows paths.
 
+## Skills (`.claude/skills/`, load when launched inside `clear-call/`)
+
+- `clearcall-dev` — run the PHP API + Android app locally (php -S 0.0.0.0:8010, gradle, adb reverse, dev login for two test users).
+- `clearcall-deploy-api` — deploy/update the PHP backend on the shivarya.dev cPanel host (infra connection details live only in the private monorepo, not this public repo).
+- `clearcall-release` — build the signed release APK/AAB, verify the signature, report the release SHA-1.
+
+## Further plans (`docs/`)
+
+- `docs/VOICE_ISOLATION_TIER_B_PLAN.md` — how to build the target-speaker "isolate a voice" models (the P4 seam is shipped; the two ML models are the remaining work).
+- `docs/IOS_APP_PLAN.md` — full build + on-device-deploy plan for the native iOS app (P5), for a developer with a Mac. Mirrors Android but uses Apple Voice Isolation instead of DeepFilterNet.
+
 ## Layout
 
 | Sub-app | Path | Stack |
