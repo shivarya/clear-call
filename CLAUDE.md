@@ -2,7 +2,7 @@
 
 Guidance for Claude Code when working inside `clear-call/`. A 1:1 internet calling app where **both parties run the app** and each side's mic is cleaned on-device — DeepFilterNet3 on Android, Apple Voice Isolation on iPhone — clear calls in any noisy environment, cross-platform. Exists because no third-party app can process WhatsApp's/the dialer's audio without root (verified dead end; `clear-mic-router/` is the routing-only companion for those).
 
-**Full plan**: `~/.claude/plans/hashed-hugging-umbrella.md`. **Status (2026-07-06)**: P0 (backend) done. **P1 (Android app, first real call) DONE and verified end-to-end on the emulator**, including a real outgoing call against live LiveKit Cloud infrastructure (mic capture confirmed active). iOS app (P5) and DeepFilterNet integration (P2) not started.
+**Full plan**: `~/.claude/plans/hashed-hugging-umbrella.md`. **Status (2026-07-06)**: P0 (backend) done and **deployed live** at `https://shivarya.dev/clear_call/`. **P1 (Android app, first real call) DONE and verified end-to-end**, including a real outgoing call against live LiveKit Cloud infrastructure (mic capture confirmed active). iOS app (P5) and DeepFilterNet integration (P2) not started. Google OAuth Web/Android client IDs still pending — production sign-in doesn't work yet (dev login is correctly disabled in prod).
 
 ## Terminal Command Rules
 
@@ -15,7 +15,7 @@ Guidance for Claude Code when working inside `clear-call/`. A 1:1 internet calli
 | Server | `server/` | PHP 8.0+ + MySQL front-controller REST API (clone of ps5-tracker/diet-plan conventions) |
 | Mobile | `mobile/` | Native Kotlin + Compose, applicationId `dev.shivarya.clearcall`, namespace `com.clearcall`, minSdk 31. **applicationId ≠ namespace** — `adb shell am start` needs the fully-qualified class: `dev.shivarya.clearcall/com.clearcall.MainActivity`, not the `.MainActivity` shorthand. |
 
-Production target: `https://shivarya.dev/clear_call/` (deploy under `~/public_html/shivarya.dev/clear_call` — the docroot, NOT `~/public_html/`). Not deployed yet.
+**Production: LIVE at `https://shivarya.dev/clear_call/`** (deployed under `~/public_html/shivarya.dev/clear_call` — the docroot, NOT `~/public_html/`). Verified: `/health` 200, unauthenticated `/contacts` → 401 JSON (routing reaches the app, not the portfolio SPA), dev-login → 410 (correctly disabled), `.env`/`composer.json` → 403, plain `http://` → 301 to `https://`.
 
 ## Commands
 
@@ -60,7 +60,21 @@ ALLOW_DEV_LOGIN (never true in prod) · LIVEKIT_URL/API_KEY/API_SECRET
 FCM_PROJECT_ID · FCM_SERVICE_ACCOUNT_PATH (chmod 600, .htaccess-denied) · RING_TIMEOUT_SECONDS=45
 ```
 
-## Verified working (2026-07-06, emulator + real LiveKit Cloud)
+## Production deployment (shared cPanel host)
+
+**Connection details (SSH host/user) are intentionally not repeated here** — this file is public. See the private monorepo root's `CLAUDE.md` / `scripts/connect_ssh.ps1` (not part of this repo) for how to reach the host; the same credentials as the other shivarya.dev apps (diet-plan, ps5-tracker, etc.) apply.
+
+| | |
+|---|---|
+| Deploy dir | `~/public_html/shivarya.dev/clear_call` |
+| DB | database `clear_call`, user `clearcall` — **no account-prefix needed on this host** (unlike the older prefixed convention documented for some other apps here; verified empirically 2026-07-06 that connecting as plain `clearcall`/`clear_call` works directly). Created via `uapi Mysql create_database/create_user/set_privileges_on_database` over SSH — no need to touch the cPanel web UI. |
+| FCM service-account key | kept **outside the webroot entirely** in a private `secrets/` dir under the account home (not just `.htaccess`-denied, for defense in depth), `chmod 700` dir / `600` file. |
+| Redeploy | `tar czf` the `server/` dir (`--exclude=./vendor --exclude=./.env`) → `scp` → extract into the deploy dir → `composer install --no-dev --optimize-autoloader` on the host. Never overwrite the host's `.env` from a local copy — it holds the real production DB password and JWT secret, generated only once during initial deploy. |
+| Note | The cPanel account's `uapi Mysql list_databases`/`list_users` output shows **short, unprefixed** names for both databases and users — trust that live output over older per-project docs when they conflict. |
+
+Google Sign-In does **not** use a redirect URI at all in this app's flow: the Android Credential Manager gets an ID token directly from Google Play Services and the app POSTs it to `POST /auth/google` for server-side verification — there is no OAuth redirect/callback route anywhere in this codebase. The "Web application" OAuth client in Google Cloud Console exists only to mint a Client ID (used as `serverClientId` on Android and `GOOGLE_CLIENT_ID` on the server); if the console UI insists on a redirect URI to save, any placeholder under `https://shivarya.dev/clear_call/` works since it's never invoked.
+
+## Verified working (2026-07-06, emulator + real LiveKit Cloud + live production API)
 
 Dev login → session persistence → contacts fetch/display → QR code generation → **outgoing call placement with a real LiveKit token, real room connect, and live microphone capture confirmed** → clean hangup (`POST /calls/{id}/cancel`) → state reset → navigation back to Home. Not yet tested: incoming call / two-way audio between two signed-in devices (needs a second device signed in — try Pixel + emulator, or two emulators).
 
