@@ -34,16 +34,3 @@ data class AnswerCallResult(
     val livekitUrl: String,
     val token: String,
 )
-
-@Serializable
-data class CallHistoryItem(
-    val id: Int,
-    val direction: String, // "outgoing" | "incoming"
-    val peerId: Int,
-    val peerName: String,
-    val status: String,
-    val endReason: String? = null,
-    val createdAt: String,
-    val answeredAt: String? = null,
-    val endedAt: String? = null,
-)

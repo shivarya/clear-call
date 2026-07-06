@@ -1,5 +1,8 @@
 package com.clearcall.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,8 +15,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,7 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,17 +55,40 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(onOpenHistory: () -> Unit) {
+fun HomeScreen(
+    onOpenScan: () -> Unit = {},
+    prefillCode: String? = null,
+    onPrefillConsumed: () -> Unit = {},
+) {
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
     val apiClient = remember { ApiClient(prefs) }
     val scope = rememberCoroutineScope()
+    val clipboardManager = LocalClipboardManager.current
 
     var contacts by remember { mutableStateOf<List<UserSummary>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var addCode by remember { mutableStateOf("") }
     var adding by remember { mutableStateOf(false) }
+
+    // Gallery decode: pick an image containing a QR, decode it, prefill the code field.
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val decoded = QrDecoder.decodeUri(context, uri)
+                if (decoded != null) addCode = decoded.uppercase()
+                else error = "No QR code found in that image"
+            }
+        }
+    }
+
+    // A code scanned via the camera screen arrives here as prefillCode; load it once.
+    LaunchedEffect(prefillCode) {
+        prefillCode?.let { addCode = it.uppercase(); onPrefillConsumed() }
+    }
 
     fun refresh() {
         scope.launch {
@@ -80,9 +110,6 @@ fun HomeScreen(onOpenHistory: () -> Unit) {
             TopAppBar(
                 title = { Text("ClearCall") },
                 actions = {
-                    IconButton(onClick = onOpenHistory) {
-                        Icon(Icons.Filled.History, contentDescription = "Call history")
-                    }
                     IconButton(onClick = { signOut(prefs) }) {
                         Icon(Icons.Filled.Logout, contentDescription = "Sign out")
                     }
@@ -100,11 +127,22 @@ fun HomeScreen(onOpenHistory: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text("Your code", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        prefs.userCode ?: "—",
-                        style = MaterialTheme.typography.headlineMedium,
-                        letterSpacing = 4.sp,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            prefs.userCode ?: "—",
+                            style = MaterialTheme.typography.headlineMedium,
+                            letterSpacing = 4.sp,
+                        )
+                        IconButton(
+                            onClick = { clipboardManager.setText(AnnotatedString(prefs.userCode.orEmpty())) },
+                            enabled = prefs.userCode != null,
+                        ) {
+                            Icon(Icons.Filled.ContentCopy, contentDescription = "Copy code")
+                        }
+                    }
                     prefs.userCode?.let { code ->
                         val bitmap = remember(code) { generateQrBitmap(code) }
                         bitmap?.let {
@@ -123,7 +161,7 @@ fun HomeScreen(onOpenHistory: () -> Unit) {
                     Text("Add a friend", fontWeight = FontWeight.SemiBold)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         OutlinedTextField(
                             value = addCode,
@@ -132,25 +170,38 @@ fun HomeScreen(onOpenHistory: () -> Unit) {
                             singleLine = true,
                             modifier = Modifier.weight(1f),
                         )
-                        Button(
-                            enabled = addCode.isNotBlank() && !adding,
+                        IconButton(onClick = onOpenScan) {
+                            Icon(Icons.Filled.QrCodeScanner, contentDescription = "Scan QR code")
+                        }
+                        IconButton(
                             onClick = {
-                                adding = true
-                                error = null
-                                scope.launch {
-                                    try {
-                                        apiClient.addContact(addCode.trim())
-                                        addCode = ""
-                                        refresh()
-                                    } catch (e: Exception) {
-                                        error = e.message
-                                    } finally {
-                                        adding = false
-                                    }
-                                }
+                                galleryLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                )
                             },
-                        ) { Text("Add") }
+                        ) {
+                            Icon(Icons.Filled.PhotoLibrary, contentDescription = "Scan QR from gallery")
+                        }
                     }
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = addCode.isNotBlank() && !adding,
+                        onClick = {
+                            adding = true
+                            error = null
+                            scope.launch {
+                                try {
+                                    apiClient.addContact(addCode.trim())
+                                    addCode = ""
+                                    refresh()
+                                } catch (e: Exception) {
+                                    error = e.message
+                                } finally {
+                                    adding = false
+                                }
+                            }
+                        },
+                    ) { Text("Add") }
                 }
             }
 

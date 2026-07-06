@@ -144,11 +144,6 @@ class ApiClient(private val prefs: Prefs) {
         execute(authed("/calls/$callId/end").post(EMPTY_BODY).build())
     }
 
-    suspend fun listCalls(limit: Int = 50): List<CallHistoryItem> {
-        val req = authed("/calls?limit=$limit").get().build()
-        return json.decodeFromJsonElement(ListSerializer(CallHistoryItem.serializer()), execute(req).getValue("data"))
-    }
-
     companion object {
         private val EMPTY_BODY = "".toRequestBody("application/json; charset=utf-8".toMediaType())
     }
