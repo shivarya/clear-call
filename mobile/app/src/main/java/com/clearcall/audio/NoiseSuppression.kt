@@ -15,8 +15,9 @@ object NoiseSuppression {
     val stats = NoiseStats()
 
     private lateinit var appContext: Context
-    private var processor: DfnNoiseProcessor? = null
+    private var processor: NoiseProcessor? = null
     private var bridge: CaptureProcessorBridge? = null
+    private var currentEngine: SuppressionEngine = SuppressionEngine.OFF
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -24,18 +25,29 @@ object NoiseSuppression {
 
     /**
      * The capture-post processor to hand LiveKit for a new call, or `null` when suppression
-     * is disabled (LiveKit then skips the hook entirely). Safe to call before/without [init]
-     * for the disabled case.
+     * is disabled (LiveKit then skips the hook entirely). Rebuilds the processor if the selected
+     * engine changed since the last call. Safe to call before/without [init] for the disabled case.
      */
     fun captureProcessorFor(prefs: Prefs): AudioProcessorInterface? {
-        if (!prefs.noiseSuppressionEnabled || !::appContext.isInitialized) {
+        val engine = if (::appContext.isInitialized) prefs.suppressionEngine else SuppressionEngine.OFF
+        if (engine == SuppressionEngine.OFF) {
             stats.engineName = "off"
             return null
         }
-        val proc = processor ?: DfnNoiseProcessor(appContext, prefs.attenuationLimitDb).also { processor = it }
-        val br = bridge ?: CaptureProcessorBridge(proc, stats).also { bridge = it }
+        if (processor == null || currentEngine != engine) {
+            processor?.release()
+            processor = when (engine) {
+                SuppressionEngine.PERSONALIZED -> SpeakerConditionedProcessor(appContext, prefs.attenuationLimitDb).apply {
+                    setSpeakerEmbedding(prefs.speakerEmbedding)
+                }
+                else -> DfnNoiseProcessor(appContext, prefs.attenuationLimitDb)
+            }
+            bridge = CaptureProcessorBridge(processor!!, stats)
+            currentEngine = engine
+        }
+        val br = bridge!!
         br.setBypass(false)
-        stats.engineName = proc.name
+        stats.engineName = processor!!.name
         return br
     }
 

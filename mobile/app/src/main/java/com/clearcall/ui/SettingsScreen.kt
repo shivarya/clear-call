@@ -16,6 +16,7 @@ import android.provider.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.DisposableEffect
+import com.clearcall.audio.SuppressionEngine
 import com.clearcall.core.Prefs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,6 +50,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val prefs = remember { Prefs(context) }
 
     var nsEnabled by remember { mutableStateOf(prefs.noiseSuppressionEnabled) }
+    var engine by remember { mutableStateOf(prefs.suppressionEngine) }
     var atten by remember { mutableFloatStateOf(prefs.attenuationLimitDb) }
 
     // Re-check battery-optimization exemption whenever we return to this screen (the user may
@@ -97,11 +100,31 @@ fun SettingsScreen(onBack: () -> Unit) {
                             onCheckedChange = {
                                 nsEnabled = it
                                 prefs.noiseSuppressionEnabled = it
+                                engine = prefs.suppressionEngine // resync (OFF or restored engine)
                             },
                         )
                     }
 
                     if (nsEnabled) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = engine == SuppressionEngine.DFN3,
+                                onClick = { engine = SuppressionEngine.DFN3; prefs.suppressionEngine = engine },
+                                label = { Text("General") },
+                            )
+                            FilterChip(
+                                selected = engine == SuppressionEngine.PERSONALIZED,
+                                onClick = { engine = SuppressionEngine.PERSONALIZED; prefs.suppressionEngine = engine },
+                                label = { Text("Only my voice · beta") },
+                            )
+                        }
+                        if (engine == SuppressionEngine.PERSONALIZED) {
+                            Text(
+                                "Uses general suppression for now — voice enrollment is coming soon.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         Text("Strength: ${atten.toInt()} dB", style = MaterialTheme.typography.bodySmall)
                         Slider(
                             value = atten,
