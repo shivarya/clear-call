@@ -17,10 +17,13 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // Google Sign-In web client ID — not secret (it's the ID token audience), but not
-        // known yet either (console setup pending). Update once the user has it; empty
-        // disables the Google Sign-In button in favor of the dev login.
-        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"\"")
+        // Google Sign-In web client ID — not secret (it's the ID token audience), used as
+        // the Credential Manager serverClientId and verified server-side as GOOGLE_CLIENT_ID.
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"660724285686-76jujsevciv9hqc9ea6g1gd0lu8detlj.apps.googleusercontent.com\"",
+        )
     }
 
     buildTypes {
