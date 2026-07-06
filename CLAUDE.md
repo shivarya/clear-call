@@ -2,7 +2,7 @@
 
 Guidance for Claude Code when working inside `clear-call/`. A 1:1 internet calling app where **both parties run the app** and each side's mic is cleaned on-device — DeepFilterNet3 on Android, Apple Voice Isolation on iPhone — clear calls in any noisy environment, cross-platform. Exists because no third-party app can process WhatsApp's/the dialer's audio without root (verified dead end; `clear-mic-router/` is the routing-only companion for those).
 
-**Full plan**: `~/.claude/plans/hashed-hugging-umbrella.md`. **Status (2026-07-06)**: P0 (backend) done and **deployed live** at `https://shivarya.dev/clear_call/`. **P1 (Android app, first real call) DONE and verified end-to-end**, including a real outgoing call against live LiveKit Cloud infrastructure (mic capture confirmed active). iOS app (P5) and DeepFilterNet integration (P2) not started. Google OAuth Web/Android client IDs still pending — production sign-in doesn't work yet (dev login is correctly disabled in prod).
+**Full plan**: `~/.claude/plans/hashed-hugging-umbrella.md`. **Status (2026-07-06)**: P0 (backend) done and **deployed live** at `https://shivarya.dev/clear_call/`. **P1 (Android app, first real call) DONE and verified end-to-end**, including a real outgoing call against live LiveKit Cloud infrastructure (mic capture confirmed active). **Google Sign-In is fully wired** (real Web client ID in both the app and server, Android client registered with the debug-keystore SHA-1) — verified reaching real Credential Manager/Google Play Services on the emulator; end-to-end sign-in itself needs a device with a real Google account (the Pixel has two, emulator has none). iOS app (P5) and DeepFilterNet integration (P2) not started.
 
 ## Terminal Command Rules
 
