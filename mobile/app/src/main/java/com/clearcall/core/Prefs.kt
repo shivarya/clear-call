@@ -28,6 +28,18 @@ class Prefs(context: Context) {
 
     val isSignedIn: Boolean get() = !authToken.isNullOrEmpty()
 
+    // ---- Noise suppression (P2) ----
+
+    /** Whether on-device DeepFilterNet3 noise removal runs on the mic uplink. Default on. */
+    var noiseSuppressionEnabled: Boolean
+        get() = sp.getBoolean(KEY_NS_ENABLED, true)
+        set(value) = sp.edit().putBoolean(KEY_NS_ENABLED, value).apply()
+
+    /** DFN3 attenuation limit in dB (higher = more aggressive). Default 100. */
+    var attenuationLimitDb: Float
+        get() = sp.getFloat(KEY_NS_ATTEN, 100f)
+        set(value) = sp.edit().putFloat(KEY_NS_ATTEN, value).apply()
+
     fun clearSession() {
         sp.edit()
             .remove(KEY_TOKEN)
@@ -44,5 +56,7 @@ class Prefs(context: Context) {
         private const val KEY_USER_NAME = "user_name"
         private const val KEY_USER_CODE = "user_code"
         private const val KEY_USER_EMAIL = "user_email"
+        private const val KEY_NS_ENABLED = "ns_enabled"
+        private const val KEY_NS_ATTEN = "ns_attenuation_db"
     }
 }

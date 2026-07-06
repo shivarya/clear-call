@@ -1,7 +1,11 @@
 package com.clearcall.call
 
 import android.content.Context
+import io.livekit.android.AudioOptions
 import io.livekit.android.LiveKit
+import io.livekit.android.LiveKitOverrides
+import io.livekit.android.audio.AudioProcessorInterface
+import io.livekit.android.audio.AudioProcessorOptions
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.events.collect
 import io.livekit.android.room.Room
@@ -37,8 +41,17 @@ class LiveKitSessionManager(private val context: Context) {
     private val _disconnected = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val disconnected: SharedFlow<Unit> = _disconnected.asSharedFlow()
 
-    suspend fun connect(url: String, token: String) {
-        val newRoom = LiveKit.create(context.applicationContext)
+    suspend fun connect(url: String, token: String, capturePostProcessor: AudioProcessorInterface? = null) {
+        val overrides = if (capturePostProcessor != null) {
+            LiveKitOverrides(
+                audioOptions = AudioOptions(
+                    audioProcessorOptions = AudioProcessorOptions(capturePostProcessor = capturePostProcessor),
+                ),
+            )
+        } else {
+            LiveKitOverrides()
+        }
+        val newRoom = LiveKit.create(context.applicationContext, overrides = overrides)
         room = newRoom
         eventsJob = scope.launch {
             newRoom.events.collect { event ->

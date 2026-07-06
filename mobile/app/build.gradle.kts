@@ -100,4 +100,7 @@ dependencies {
 
     // Biometric app lock
     implementation("androidx.biometric:biometric:1.1.0")
+
+    // On-device noise suppression (DeepFilterNet3), P2
+    implementation("io.github.kaleyravideo:android-deepfilternet:0.0.8")
 }

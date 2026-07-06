@@ -3,6 +3,7 @@ package com.clearcall.call
 import android.content.Context
 import android.telecom.DisconnectCause
 import android.util.Log
+import com.clearcall.audio.NoiseSuppression
 import com.clearcall.core.Prefs
 import com.clearcall.net.ApiClient
 import com.clearcall.net.ApiException
@@ -27,6 +28,7 @@ object CallManager {
     private const val TAG = "CallManager"
 
     private lateinit var appContext: Context
+    private lateinit var prefs: Prefs
     private lateinit var apiClient: ApiClient
     private lateinit var telecomHelper: TelecomHelper
     private lateinit var ringtonePlayer: RingtonePlayer
@@ -39,11 +41,12 @@ object CallManager {
 
     fun init(context: Context) {
         appContext = context.applicationContext
-        val prefs = Prefs(appContext)
+        prefs = Prefs(appContext)
         apiClient = ApiClient(prefs)
         telecomHelper = TelecomHelper(appContext)
         ringtonePlayer = RingtonePlayer(appContext)
         telecomHelper.registerPhoneAccount()
+        NoiseSuppression.init(appContext)
     }
 
     // ---- Outgoing ----
@@ -197,9 +200,10 @@ object CallManager {
             launch { session.remoteJoined.collect { onRemoteJoined() } }
             launch { session.remoteLeft.collect { hangup() } }
         }
+        val nsProcessor = NoiseSuppression.captureProcessorFor(prefs)
         scope.launch {
             try {
-                session.connect(url, token)
+                session.connect(url, token, nsProcessor)
             } catch (e: Exception) {
                 Log.e(TAG, "LiveKit connect failed", e)
                 CallState.setError("Connection failed: ${e.message}")

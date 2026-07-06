@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,6 +58,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     onOpenScan: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     prefillCode: String? = null,
     onPrefillConsumed: () -> Unit = {},
 ) {
@@ -110,6 +112,9 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("ClearCall") },
                 actions = {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                    }
                     IconButton(onClick = { signOut(prefs) }) {
                         Icon(Icons.Filled.Logout, contentDescription = "Sign out")
                     }

@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.clearcall.BuildConfig
 import com.clearcall.call.CallManager
 import com.clearcall.call.CallPhase
 import com.clearcall.call.CallState
@@ -95,6 +96,11 @@ fun CallScreen(onCallEnded: () -> Unit) {
                         modifier = Modifier.size(64.dp),
                     ) { Icon(Icons.Filled.CallEnd, contentDescription = "Hang up") }
                 }
+            }
+
+            if (BuildConfig.DEBUG && phase == CallPhase.ACTIVE) {
+                Spacer(Modifier.height(32.dp))
+                NoiseDebugOverlay()
             }
         }
     }

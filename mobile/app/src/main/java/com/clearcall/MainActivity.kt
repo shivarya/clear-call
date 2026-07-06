@@ -25,10 +25,11 @@ import com.clearcall.ui.CallScreen
 import com.clearcall.ui.HomeScreen
 import com.clearcall.ui.LockedScreen
 import com.clearcall.ui.ScanQrScreen
+import com.clearcall.ui.SettingsScreen
 import com.clearcall.ui.SignInScreen
 import com.clearcall.ui.theme.ClearCallTheme
 
-private enum class Screen { HOME, SCAN }
+private enum class Screen { HOME, SCAN, SETTINGS }
 
 class MainActivity : FragmentActivity() {
 
@@ -91,8 +92,10 @@ private fun AppRoot() {
             onBack = { screen = Screen.HOME },
             onCodeScanned = { code -> scannedCode = code; screen = Screen.HOME },
         )
+        screen == Screen.SETTINGS -> SettingsScreen(onBack = { screen = Screen.HOME })
         else -> HomeScreen(
             onOpenScan = { screen = Screen.SCAN },
+            onOpenSettings = { screen = Screen.SETTINGS },
             prefillCode = scannedCode,
             onPrefillConsumed = { scannedCode = null },
         )
