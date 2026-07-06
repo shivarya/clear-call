@@ -4,34 +4,39 @@ import android.content.Context
 import android.util.Log
 
 /**
- * Tier B "only my voice" suppression — **seam / stub for now**.
+ * Tier B **target-speaker extraction** — seam / stub for now.
  *
- * The end state (VoiceFilter-Lite style): one generic speaker-conditioned model trained once,
- * developer-side; each user enrolls ~30–60 s of speech on-device once ([VoiceEnrollment]),
- * producing a small d-vector [speakerEmbedding] that conditions the model at runtime to keep
- * only the enrolled speaker and remove everyone/everything else. Inference is 100% on-device;
- * users never need a GPU.
+ * Goal (like Teams' voice isolation / Google VoiceFilter-Lite, but target-agnostic): keep only
+ * the voice that matches a **provided reference sample** and remove everyone/everything else —
+ * background chatter, other people talking near the mic, and noise. The target is defined by a
+ * d-vector [targetEmbedding] computed from *any* speaker's sample (see [TargetVoiceProfile]),
+ * not fixed to the phone's owner: whoever's sample you enroll is the voice that gets filtered in.
  *
- * Until that model ships, this composes [DfnNoiseProcessor] so selecting "Personalized" still
- * gives real (general) suppression rather than nothing. When the personalized model lands, only
- * [processHop] changes to feed the embedding into it — the bridge, settings, and enrollment are
- * already wired. See the plan (P4) / CLAUDE.md.
+ * The end state: ONE generic speaker-conditioned separation model trained once developer-side;
+ * at runtime it takes the mic frame **plus** the target d-vector and masks out non-target audio.
+ * Inference is 100% on-device; users never need a GPU. Until that model ships, this composes
+ * [DfnNoiseProcessor], so "isolate a voice" still gives real (general) suppression rather than
+ * nothing. When the model lands, only [processHop] changes to feed [targetEmbedding] into it —
+ * the bridge, settings, and profile storage are already wired. See the plan (P4) / CLAUDE.md.
  */
 class SpeakerConditionedProcessor(
     context: Context,
     attenuationLimitDb: Float,
 ) : NoiseProcessor {
 
-    override val name = "personalized"
+    override val name = "target-speaker"
 
     private val fallback = DfnNoiseProcessor(context, attenuationLimitDb)
 
-    @Volatile private var speakerEmbedding: FloatArray? = null
+    @Volatile private var targetEmbedding: FloatArray? = null
 
-    /** Condition on the enrolled speaker's d-vector. No-op in the stub beyond storing it. */
-    fun setSpeakerEmbedding(embedding: FloatArray?) {
-        speakerEmbedding = embedding
-        Log.i(TAG, "Speaker embedding set (dim=${embedding?.size ?: 0}); using DFN3 fallback until the personalized model ships")
+    /**
+     * Set the d-vector of the voice to keep (from an enrolled reference sample). Passing null
+     * means "no target selected" → the stub simply runs general suppression.
+     */
+    fun setTargetEmbedding(embedding: FloatArray?) {
+        targetEmbedding = embedding
+        Log.i(TAG, "Target voice d-vector set (dim=${embedding?.size ?: 0}); DFN3 fallback until the extraction model ships")
     }
 
     override val hopSize: Int get() = fallback.hopSize
@@ -39,8 +44,9 @@ class SpeakerConditionedProcessor(
     override fun initialize(sampleRateHz: Int, numChannels: Int) = fallback.initialize(sampleRateHz, numChannels)
 
     override fun processHop(hop: FloatArray) {
-        // TODO(P4-real): run the speaker-conditioned model with [speakerEmbedding] here.
-        // Until then, general suppression via DFN3 so "Personalized" is never worse than Tier A.
+        // TODO(P4-real): run the target-speaker separation model conditioned on [targetEmbedding]
+        // here — keep only the matching speaker. Until then, general suppression via DFN3 so
+        // "isolate a voice" is never worse than Tier A.
         fallback.processHop(hop)
     }
 
@@ -48,6 +54,6 @@ class SpeakerConditionedProcessor(
     override fun release() = fallback.release()
 
     companion object {
-        private const val TAG = "SpeakerNoise"
+        private const val TAG = "TargetSpeaker"
     }
 }

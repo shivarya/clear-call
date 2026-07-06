@@ -113,17 +113,24 @@ fun SettingsScreen(onBack: () -> Unit) {
                                 label = { Text("General") },
                             )
                             FilterChip(
-                                selected = engine == SuppressionEngine.PERSONALIZED,
-                                onClick = { engine = SuppressionEngine.PERSONALIZED; prefs.suppressionEngine = engine },
-                                label = { Text("Only my voice · beta") },
+                                selected = engine == SuppressionEngine.TARGET_SPEAKER,
+                                onClick = { engine = SuppressionEngine.TARGET_SPEAKER; prefs.suppressionEngine = engine },
+                                label = { Text("Isolate a voice · beta") },
                             )
                         }
-                        if (engine == SuppressionEngine.PERSONALIZED) {
+                        if (engine == SuppressionEngine.TARGET_SPEAKER) {
+                            val target = prefs.targetVoiceName
                             Text(
-                                "Uses general suppression for now — voice enrollment is coming soon.",
+                                if (target != null) "Keeping only: $target" else "No voice sample added yet.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                "Record a short sample of the voice to keep (yours or anyone's) — the app removes " +
+                                    "every other voice and background. Uses general suppression until the model ships.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            Button(enabled = false, onClick = {}) { Text("Add a voice sample (coming soon)") }
                         }
                         Text("Strength: ${atten.toInt()} dB", style = MaterialTheme.typography.bodySmall)
                         Slider(

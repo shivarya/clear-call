@@ -37,8 +37,8 @@ object NoiseSuppression {
         if (processor == null || currentEngine != engine) {
             processor?.release()
             processor = when (engine) {
-                SuppressionEngine.PERSONALIZED -> SpeakerConditionedProcessor(appContext, prefs.attenuationLimitDb).apply {
-                    setSpeakerEmbedding(prefs.speakerEmbedding)
+                SuppressionEngine.TARGET_SPEAKER -> SpeakerConditionedProcessor(appContext, prefs.attenuationLimitDb).apply {
+                    setTargetEmbedding(prefs.targetVoiceEmbedding)
                 }
                 else -> DfnNoiseProcessor(appContext, prefs.attenuationLimitDb)
             }

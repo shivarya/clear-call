@@ -57,15 +57,20 @@ class Prefs(context: Context) {
         get() = sp.getFloat(KEY_NS_ATTEN, 100f)
         set(value) = sp.edit().putFloat(KEY_NS_ATTEN, value).apply()
 
-    /** Enrolled speaker d-vector for Tier B ("only my voice"), stored locally, never uploaded. */
-    var speakerEmbedding: FloatArray?
+    /** Name of the enrolled "voice to keep" for Tier B target-speaker extraction (any speaker). */
+    var targetVoiceName: String?
+        get() = sp.getString(KEY_TGT_NAME, null)
+        set(value) = sp.edit().putString(KEY_TGT_NAME, value).apply()
+
+    /** d-vector of the target voice, computed on-device from its sample; local-only, never uploaded. */
+    var targetVoiceEmbedding: FloatArray?
         get() {
-            val s = sp.getString(KEY_SPK_EMB, null) ?: return null
+            val s = sp.getString(KEY_TGT_EMB, null) ?: return null
             return runCatching { s.split(",").map { it.toFloat() }.toFloatArray() }.getOrNull()
         }
         set(value) {
-            if (value == null) sp.edit().remove(KEY_SPK_EMB).apply()
-            else sp.edit().putString(KEY_SPK_EMB, value.joinToString(",")).apply()
+            if (value == null) sp.edit().remove(KEY_TGT_EMB).apply()
+            else sp.edit().putString(KEY_TGT_EMB, value.joinToString(",")).apply()
         }
 
     fun clearSession() {
@@ -87,6 +92,7 @@ class Prefs(context: Context) {
         private const val KEY_NS_ENABLED = "ns_enabled"
         private const val KEY_NS_ENGINE = "ns_engine"
         private const val KEY_NS_ATTEN = "ns_attenuation_db"
-        private const val KEY_SPK_EMB = "speaker_embedding"
+        private const val KEY_TGT_NAME = "target_voice_name"
+        private const val KEY_TGT_EMB = "target_voice_embedding"
     }
 }
