@@ -1,0 +1,37 @@
+# ClearCall API — deployed under ~/public_html/shivarya.dev/clear_call/ (docroot subfolder).
+RewriteEngine On
+
+# Subfolder base.
+RewriteBase /clear_call/
+
+# cPanel/CGI strips the Authorization header unless forwarded explicitly.
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
+# Force HTTPS in production.
+RewriteCond %{HTTPS} off
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Route everything that is not a real file/dir to the front controller.
+# Absolute target so the parent docroot's SPA catch-all does not shadow us.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /clear_call/index.php [QSA,L]
+
+# Security headers (CORS is set by index.php, not here, to avoid duplicate headers).
+<IfModule mod_headers.c>
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Never serve secrets, the error log, composer metadata, or the FCM service-account key.
+<FilesMatch "^(\.env.*|composer\.(json|lock)|php_errors\.log|.*service.?account.*\.json|.*firebase.*\.json)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+
+# Disable directory listing.
+Options -Indexes

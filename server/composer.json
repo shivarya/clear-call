@@ -1,0 +1,15 @@
+{
+  "name": "clear-call/server",
+  "description": "PHP REST API for ClearCall — auth, contacts, call signaling, LiveKit token mint, FCM ring",
+  "type": "project",
+  "require": {
+    "php": ">=8.0",
+    "firebase/php-jwt": "^6.0",
+    "google/apiclient": "^2.0"
+  },
+  "config": {
+    "audit": {
+      "block-insecure": false
+    }
+  }
+}

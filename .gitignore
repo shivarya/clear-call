@@ -1,0 +1,19 @@
+# Server secrets
+server/.env
+server/.env.production
+server/php_errors.log
+*service-account*.json
+*firebase-adminsdk*.json
+
+# Composer deps — installed on the host via `composer install` at deploy time
+server/vendor/
+server/composer.lock
+
+# Mobile (P1+)
+mobile/app/google-services.json
+mobile/.gradle/
+mobile/build/
+mobile/app/build/
+mobile/local.properties
+*.keystore
+!debug.keystore
