@@ -72,6 +72,18 @@ class LiveKitSessionManager(private val context: Context) {
         scope.launch { localParticipant.setMicrophoneEnabled(!muted) }
     }
 
+    /**
+     * Advertise that we (the callee) have accepted, via a participant attribute. Android callers
+     * currently detect answer from the callee joining the room (see [remoteJoined]); this
+     * attribute is the cross-platform signal an iOS caller will use instead, since an iOS callee
+     * joins the room while still *ringing* (to listen for a cancel) and only sets state=answered
+     * on accept. Harmless for Android-to-Android calls. See CLAUDE.md P4.5.
+     */
+    fun advertiseAnswered() {
+        val localParticipant = room?.localParticipant ?: return
+        runCatching { localParticipant.updateAttributes(mapOf("state" to "answered")) }
+    }
+
     fun disconnect() {
         eventsJob?.cancel()
         eventsJob = null

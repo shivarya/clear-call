@@ -35,9 +35,17 @@ define('LIVEKIT_URL', getenv('LIVEKIT_URL') ?: '');            // wss://<project
 define('LIVEKIT_API_KEY', getenv('LIVEKIT_API_KEY') ?: '');
 define('LIVEKIT_API_SECRET', getenv('LIVEKIT_API_SECRET') ?: '');
 
-// FCM v1 (ring pushes). Service-account JSON must be chmod 600 and .htaccess-denied.
+// FCM v1 (Android ring pushes). Service-account JSON must be chmod 600 and .htaccess-denied.
 define('FCM_PROJECT_ID', getenv('FCM_PROJECT_ID') ?: '');
 define('FCM_SERVICE_ACCOUNT_PATH', getenv('FCM_SERVICE_ACCOUNT_PATH') ?: '');
+
+// APNs VoIP (iOS ring pushes). Direct to Apple with an ES256 .p8 auth key — not via FCM.
+// Unset until an Apple Developer account exists; sends are skipped gracefully meanwhile.
+define('APNS_KEY_PATH', getenv('APNS_KEY_PATH') ?: '');   // path to AuthKey_XXXX.p8 (outside webroot)
+define('APNS_KEY_ID', getenv('APNS_KEY_ID') ?: '');       // the .p8's Key ID
+define('APNS_TEAM_ID', getenv('APNS_TEAM_ID') ?: '');     // Apple Developer Team ID
+define('APNS_BUNDLE_ID', getenv('APNS_BUNDLE_ID') ?: 'dev.shivarya.clearcall');
+define('APNS_ENV', getenv('APNS_ENV') ?: 'sandbox');      // 'sandbox' | 'production' (TestFlight = production)
 
 // Ring lifecycle
 define('RING_TIMEOUT_SECONDS', (int)(getenv('RING_TIMEOUT_SECONDS') ?: 45));

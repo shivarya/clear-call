@@ -26,6 +26,9 @@ function mintLivekitToken(string $identity, string $displayName, string $room, i
       'room' => $room,
       'canPublish' => true,
       'canSubscribe' => true,
+      // Lets a participant set its own attributes at runtime (e.g. state=answered), the
+      // basis for the cross-platform participant-attribute answer signal (see CLAUDE.md).
+      'canUpdateOwnMetadata' => true,
     ],
   ];
   return JWT::encode($payload, LIVEKIT_API_SECRET, 'HS256');

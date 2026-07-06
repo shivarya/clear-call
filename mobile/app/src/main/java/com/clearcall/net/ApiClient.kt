@@ -100,7 +100,11 @@ class ApiClient(private val prefs: Prefs) {
     }
 
     suspend fun registerDevice(fcmToken: String, deviceLabel: String) {
-        val body = buildJsonObject { put("fcmToken", fcmToken); put("deviceLabel", deviceLabel) }
+        val body = buildJsonObject {
+            put("pushToken", fcmToken)
+            put("platform", "android")
+            put("deviceLabel", deviceLabel)
+        }
         val req = authed("/devices/register").post(body.toString().toRequestBody(jsonMediaType)).build()
         execute(req)
     }

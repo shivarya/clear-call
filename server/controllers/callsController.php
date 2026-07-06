@@ -1,7 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../utils/livekit.php';
-require_once __DIR__ . '/../utils/fcm.php';
+require_once __DIR__ . '/../utils/push.php';
 
 function handleCallsRoutes($uri, $method)
 {
@@ -140,13 +140,13 @@ function createCall()
 
     $callerToken = mintLivekitToken('u' . $callerId, $caller['name'], $roomName);
 
-    $push = Fcm::sendToUser($calleeId, [
+    $push = Push::sendToUser($calleeId, [
       'type' => 'ring',
       'callId' => $callId,
       'roomName' => $roomName,
       'callerId' => $callerId,
       'callerName' => $caller['name'],
-    ], RING_TIMEOUT_SECONDS . 's');
+    ], RING_TIMEOUT_SECONDS . 's', RING_TIMEOUT_SECONDS);
 
     if (!$push['skipped'] && $push['sent'] === 0) {
       // Every push failed — the callee will never ring.
@@ -236,7 +236,7 @@ function declineCall(int $callId)
       "UPDATE calls SET status = 'declined', end_reason = 'declined', ended_at = NOW() WHERE id = ?",
       [$callId]
     );
-    Fcm::sendToUser((int)$call['caller_id'], ['type' => 'declined', 'callId' => $callId], '30s');
+    Push::sendToUser((int)$call['caller_id'], ['type' => 'declined', 'callId' => $callId], '30s', 30);
     Response::success(null, 'Declined');
   } catch (Exception $e) {
     error_log('declineCall error: ' . $e->getMessage());
@@ -270,12 +270,12 @@ function cancelCall(int $callId)
       "UPDATE calls SET status = ?, end_reason = ?, ended_at = NOW() WHERE id = ?",
       [$newStatus, $reason, $callId]
     );
-    Fcm::sendToUser((int)$call['callee_id'], [
+    Push::sendToUser((int)$call['callee_id'], [
       'type' => 'cancel',
       'callId' => $callId,
       'missed' => $reason === 'timeout' ? '1' : '0',
       'callerName' => $db->fetchOne("SELECT name FROM users WHERE id = ?", [$call['caller_id']])['name'] ?? '',
-    ], '60s');
+    ], '60s', 60);
     Response::success(null, ucfirst($newStatus));
   } catch (Exception $e) {
     error_log('cancelCall error: ' . $e->getMessage());

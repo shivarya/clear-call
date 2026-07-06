@@ -120,7 +120,7 @@ object CallManager {
         scope.launch {
             try {
                 val result = apiClient.answerCall(info.callId)
-                connectLiveKit(result.livekitUrl, result.token)
+                connectLiveKit(result.livekitUrl, result.token, advertiseAnswered = true)
                 CallState.setPhase(CallPhase.ACTIVE)
                 OngoingCallService.start(appContext)
             } catch (e: ApiException) {
@@ -192,7 +192,7 @@ object CallManager {
 
     // ---- Internals ----
 
-    private fun connectLiveKit(url: String, token: String) {
+    private fun connectLiveKit(url: String, token: String, advertiseAnswered: Boolean = false) {
         val session = LiveKitSessionManager(appContext)
         liveKit = session
         liveKitEventsJob?.cancel()
@@ -204,6 +204,9 @@ object CallManager {
         scope.launch {
             try {
                 session.connect(url, token, nsProcessor)
+                // Callee: advertise acceptance via a participant attribute (cross-platform answer
+                // signal for a future iOS caller; Android callers use room-join, see LiveKitSessionManager).
+                if (advertiseAnswered) session.advertiseAnswered()
             } catch (e: Exception) {
                 Log.e(TAG, "LiveKit connect failed", e)
                 CallState.setError("Connection failed: ${e.message}")

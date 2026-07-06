@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS devices (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
+  -- Push token for this device: an FCM token on Android, a PushKit VoIP token on iOS.
   fcm_token VARCHAR(512) NOT NULL,
+  platform ENUM('android','ios') NOT NULL DEFAULT 'android',
   device_label VARCHAR(120) DEFAULT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
