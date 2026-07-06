@@ -86,7 +86,11 @@ fun SignInScreen() {
                 ) { Text("Sign in with Google") }
             } else {
                 Text(
-                    "Google Sign-In isn't configured yet — use a dev login below for local testing.",
+                    if (BuildConfig.DEBUG) {
+                        "Google Sign-In isn't configured yet — use a dev login below for local testing."
+                    } else {
+                        "Google Sign-In isn't configured yet. Check back once it's set up."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center,
                 )
