@@ -31,6 +31,14 @@ object CallState {
     private val _speakerOn = MutableStateFlow(false)
     val speakerOn: StateFlow<Boolean> = _speakerOn.asStateFlow()
 
+    /**
+     * True while the current call runs in media-audio mode: earbuds play the far end over
+     * A2DP while the phone's own mic captures the near end (see [CallManager.connectLiveKit]).
+     * Fixed for the duration of a call.
+     */
+    private val _phoneMicMode = MutableStateFlow(false)
+    val phoneMicMode: StateFlow<Boolean> = _phoneMicMode.asStateFlow()
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -50,6 +58,10 @@ object CallState {
         _speakerOn.value = value
     }
 
+    fun setPhoneMicMode(value: Boolean) {
+        _phoneMicMode.value = value
+    }
+
     fun setError(message: String?) {
         _errorMessage.value = message
     }
@@ -59,5 +71,6 @@ object CallState {
         _current.value = null
         _muted.value = false
         _speakerOn.value = false
+        _phoneMicMode.value = false
     }
 }

@@ -57,6 +57,15 @@ class Prefs(context: Context) {
         get() = sp.getFloat(KEY_NS_ATTEN, 100f)
         set(value) = sp.edit().putFloat(KEY_NS_ATTEN, value).apply()
 
+    /**
+     * With earbuds connected, capture from the phone's own mic instead of the earbud mic
+     * (media-mode audio: buds keep playing via A2DP, no SCO). Earbud mics pick up far more
+     * environment noise than the phone's mic + DFN3; default on.
+     */
+    var phoneMicWithBuds: Boolean
+        get() = sp.getBoolean(KEY_PHONE_MIC_BUDS, true)
+        set(value) = sp.edit().putBoolean(KEY_PHONE_MIC_BUDS, value).apply()
+
     /** Name of the enrolled "voice to keep" for Tier B target-speaker extraction (any speaker). */
     var targetVoiceName: String?
         get() = sp.getString(KEY_TGT_NAME, null)
@@ -72,6 +81,20 @@ class Prefs(context: Context) {
             if (value == null) sp.edit().remove(KEY_TGT_EMB).apply()
             else sp.edit().putString(KEY_TGT_EMB, value.joinToString(",")).apply()
         }
+
+    /** Encoder version that produced [targetVoiceEmbedding] — enables recompute-on-upgrade. */
+    var targetVoiceModelVersion: String?
+        get() = sp.getString(KEY_TGT_EMB_VER, null)
+        set(value) = sp.edit().putString(KEY_TGT_EMB_VER, value).apply()
+
+    /** Forget the enrolled voice (callers should also delete the kept WAV — see VoiceEnrollment.clear). */
+    fun clearTargetVoice() {
+        sp.edit()
+            .remove(KEY_TGT_NAME)
+            .remove(KEY_TGT_EMB)
+            .remove(KEY_TGT_EMB_VER)
+            .apply()
+    }
 
     fun clearSession() {
         sp.edit()
@@ -94,5 +117,7 @@ class Prefs(context: Context) {
         private const val KEY_NS_ATTEN = "ns_attenuation_db"
         private const val KEY_TGT_NAME = "target_voice_name"
         private const val KEY_TGT_EMB = "target_voice_embedding"
+        private const val KEY_TGT_EMB_VER = "target_voice_embed_ver"
+        private const val KEY_PHONE_MIC_BUDS = "phone_mic_with_buds"
     }
 }

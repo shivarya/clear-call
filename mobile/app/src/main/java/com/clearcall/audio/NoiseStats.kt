@@ -19,9 +19,16 @@ class NoiseStats {
     @Volatile var avgHopMicros: Long = 0
     @Volatile var p95HopMicros: Long = 0
 
+    // Speaker-gate telemetry (engine "target-speaker" only; see SpeakerGate).
+    @Volatile var gateOpen: Boolean = true
+    @Volatile var gateVad: Boolean = false
+    @Volatile var gateCosine: Float = 0f
+    @Volatile var gateGainDb: Float = 0f
+
     fun snapshot(): NoiseStatsSnapshot = NoiseStatsSnapshot(
         engineName, sampleRate, numBands, numFrames, hopSize, ready, bypassed, autoBypassed,
         hopsProcessed, lastHopMicros, avgHopMicros, p95HopMicros,
+        gateOpen, gateVad, gateCosine, gateGainDb,
     )
 }
 
@@ -38,4 +45,8 @@ data class NoiseStatsSnapshot(
     val lastHopMicros: Long,
     val avgHopMicros: Long,
     val p95HopMicros: Long,
+    val gateOpen: Boolean,
+    val gateVad: Boolean,
+    val gateCosine: Float,
+    val gateGainDb: Float,
 )

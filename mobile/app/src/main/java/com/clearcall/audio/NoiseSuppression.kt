@@ -37,14 +37,15 @@ object NoiseSuppression {
         if (processor == null || currentEngine != engine) {
             processor?.release()
             processor = when (engine) {
-                SuppressionEngine.TARGET_SPEAKER -> SpeakerConditionedProcessor(appContext, prefs.attenuationLimitDb).apply {
-                    setTargetEmbedding(prefs.targetVoiceEmbedding)
-                }
+                SuppressionEngine.TARGET_SPEAKER -> SpeakerConditionedProcessor(appContext, prefs.attenuationLimitDb)
                 else -> DfnNoiseProcessor(appContext, prefs.attenuationLimitDb)
             }
             bridge = CaptureProcessorBridge(processor!!, stats)
             currentEngine = engine
         }
+        // Applied on every call setup, not just on rebuild — the processor is app-scoped, so a
+        // re-enrollment while TARGET_SPEAKER is already selected must still reach it.
+        (processor as? SpeakerConditionedProcessor)?.setTargetEmbedding(prefs.targetVoiceEmbedding)
         val br = bridge!!
         br.setBypass(false)
         stats.engineName = processor!!.name

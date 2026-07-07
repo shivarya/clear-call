@@ -54,6 +54,10 @@ fun NoiseDebugOverlay(modifier: Modifier = Modifier) {
                     append("rate=${snap.sampleRate}  bands=${snap.numBands}  frames=${snap.numFrames}  hop=${snap.hopSize}\n")
                     append("hops=${snap.hopsProcessed}  last=${snap.lastHopMicros}µs  avg=${snap.avgHopMicros}µs  p95=${snap.p95HopMicros}µs\n")
                     append("bypass=${snap.bypassed}  autoBypass=${snap.autoBypassed}")
+                    if (snap.engineName == "target-speaker") {
+                        append("\ngate=${if (snap.gateOpen) "OPEN" else "CLOSED"}  vad=${if (snap.gateVad) 1 else 0}")
+                        append("  cos=${"%.2f".format(snap.gateCosine)}  g=${"%.1f".format(snap.gateGainDb)}dB")
+                    }
                 },
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,

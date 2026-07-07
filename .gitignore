@@ -11,6 +11,11 @@ server/composer.lock
 
 # Mobile (P1+)
 mobile/app/google-services.json
+# ML assets (large binaries; fetch with mobile/scripts/fetch-ml-assets.ps1)
+mobile/app/libs/*.aar
+mobile/app/src/main/assets/models/
+# IDE (VSCode Java ext) build output
+mobile/app/bin/
 mobile/.gradle/
 mobile/build/
 mobile/app/build/

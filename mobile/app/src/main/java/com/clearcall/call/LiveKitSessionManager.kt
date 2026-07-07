@@ -2,6 +2,7 @@ package com.clearcall.call
 
 import android.content.Context
 import io.livekit.android.AudioOptions
+import io.livekit.android.AudioType
 import io.livekit.android.LiveKit
 import io.livekit.android.LiveKitOverrides
 import io.livekit.android.audio.AudioProcessorInterface
@@ -41,11 +42,25 @@ class LiveKitSessionManager(private val context: Context) {
     private val _disconnected = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val disconnected: SharedFlow<Unit> = _disconnected.asSharedFlow()
 
-    suspend fun connect(url: String, token: String, capturePostProcessor: AudioProcessorInterface? = null) {
-        val overrides = if (capturePostProcessor != null) {
+    /**
+     * @param useMediaAudio Play the far end as *media* (MODE_NORMAL / USAGE_MEDIA) instead of a
+     * communication call. With Bluetooth earbuds connected this keeps the output on A2DP
+     * (wideband, any brand) and — because no SCO link is started — capture falls to the
+     * phone's own, much better microphone. AudioSwitchHandler deliberately skips call routing
+     * for non-communication modes, so nothing fights the system's media routing. Fixed per call.
+     */
+    suspend fun connect(
+        url: String,
+        token: String,
+        capturePostProcessor: AudioProcessorInterface? = null,
+        useMediaAudio: Boolean = false,
+    ) {
+        val audioProcessorOptions = capturePostProcessor?.let { AudioProcessorOptions(capturePostProcessor = it) }
+        val overrides = if (audioProcessorOptions != null || useMediaAudio) {
             LiveKitOverrides(
                 audioOptions = AudioOptions(
-                    audioProcessorOptions = AudioProcessorOptions(capturePostProcessor = capturePostProcessor),
+                    audioOutputType = if (useMediaAudio) AudioType.MediaAudioType() else null,
+                    audioProcessorOptions = audioProcessorOptions,
                 ),
             )
         } else {

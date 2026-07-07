@@ -35,6 +35,10 @@ android {
             "GOOGLE_WEB_CLIENT_ID",
             "\"660724285686-76jujsevciv9hqc9ea6g1gd0lu8detlj.apps.googleusercontent.com\"",
         )
+
+        // 64-bit only (Play requires 64-bit; x86_64 keeps the emulator working). The ML payload
+        // (sherpa-onnx + DFN + WebRTC ship 4 ABIs each) roughly doubles otherwise.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
     signingConfigs {
@@ -81,6 +85,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    androidResources {
+        // Model files are memory-mapped/streamed by native code at load; don't compress them.
+        noCompress += "onnx"
     }
 }
 
@@ -129,4 +137,9 @@ dependencies {
 
     // On-device noise suppression (DeepFilterNet3), P2
     implementation("io.github.kaleyravideo:android-deepfilternet:0.0.8")
+
+    // Speaker embedding (WeSpeaker CAM++) + Silero VAD for "Isolate a voice", P4.
+    // Official prebuilt AAR (Apache-2.0), gitignored — fetch with scripts/fetch-ml-assets.ps1
+    // along with the .onnx model assets. Statically links its own onnxruntime.
+    implementation(files("libs/sherpa-onnx-static-link-onnxruntime-1.13.3.aar"))
 }

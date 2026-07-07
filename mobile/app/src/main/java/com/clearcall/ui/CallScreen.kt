@@ -40,6 +40,7 @@ fun CallScreen(onCallEnded: () -> Unit) {
     val info by CallState.current.collectAsState()
     val muted by CallState.muted.collectAsState()
     val speakerOn by CallState.speakerOn.collectAsState()
+    val phoneMicMode by CallState.phoneMicMode.collectAsState()
     val error by CallState.errorMessage.collectAsState()
 
     LaunchedEffect(phase) {
@@ -59,6 +60,14 @@ fun CallScreen(onCallEnded: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             Text(phaseLabel(phase), style = MaterialTheme.typography.bodyLarge)
+            if (phoneMicMode) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Phone mic · earbuds audio",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             error?.let {
                 Spacer(Modifier.height(8.dp))
                 Text(it, color = MaterialTheme.colorScheme.error)
@@ -91,19 +100,21 @@ fun CallScreen(onCallEnded: () -> Unit) {
                                 contentDescription = if (muted) "Unmute" else "Mute",
                             )
                         }
-                        FilledIconButton(
-                            onClick = { CallManager.toggleSpeaker() },
-                            colors = if (speakerOn) {
-                                IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
-                            } else {
-                                IconButtonDefaults.filledIconButtonColors()
-                            },
-                            modifier = Modifier.size(56.dp),
-                        ) {
-                            Icon(
-                                Icons.Filled.VolumeUp,
-                                contentDescription = if (speakerOn) "Speaker on" else "Speaker off",
-                            )
+                        if (!phoneMicMode) {
+                            FilledIconButton(
+                                onClick = { CallManager.toggleSpeaker() },
+                                colors = if (speakerOn) {
+                                    IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                } else {
+                                    IconButtonDefaults.filledIconButtonColors()
+                                },
+                                modifier = Modifier.size(56.dp),
+                            ) {
+                                Icon(
+                                    Icons.Filled.VolumeUp,
+                                    contentDescription = if (speakerOn) "Speaker on" else "Speaker off",
+                                )
+                            }
                         }
                     }
                     FilledIconButton(

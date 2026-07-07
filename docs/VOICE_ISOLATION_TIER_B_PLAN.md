@@ -1,78 +1,117 @@
-# ClearCall — Tier B: "Isolate a voice" (target-speaker extraction) — implementation plan
+# ClearCall — Tier B "Isolate a voice" + clean-uplink-with-earbuds
 
-Status: **seam shipped, models not built.** The app has a working seam (see "How it plugs in"); this doc is the plan to build the two models that make it actually filter. Until then the "Isolate a voice · beta" setting falls back to DeepFilterNet3 general suppression, and the enrollment button stays "coming soon."
+Status: **v1 SHIPPED (2026-07-07), zero-training.** Both features below are implemented and
+emulator-verified; real-device (Pixel + earbuds + second phone) validation is the remaining step.
+The original trained-separation-model design is preserved as the **v2 appendix** at the bottom —
+it drops into the same seam if/when the gating v1 isn't enough.
 
-## Goal
+## What shipped
 
-On a caller's **mic uplink**, keep only the voice matching a **provided reference sample** — the phone user's own voice by default, but any speaker whose sample is enrolled — and remove all *other* voices plus background noise. This is what Teams "voice isolation" / Google VoiceFilter-Lite do. It goes beyond DeepFilterNet3 (Tier A), which removes non-speech noise but not *other people's speech*.
+### 1. "Phone mic with earbuds" call mode (the earbud-noise fix)
 
-Because ClearCall cleans each sender's outgoing audio (per-sender), the target is always a **near-end** voice (someone speaking into this phone). You cannot target the far-end person — they aren't in your mic. Their phone isolates their own voice on their side.
+**Problem:** with any Bluetooth earbuds on a call, Android starts SCO — the *earbud's* mic
+captures the voice (poor hardware, narrowband link, lots of room noise) and the phone's far
+better mic + our DFN3 cleaning are bypassed at their best.
 
-## Why it's a real ML build, not a library drop-in
+**Fix (we own the pipeline, so we can):** when earbuds are connected at call setup and
+`Prefs.phoneMicWithBuds` is on (default), the LiveKit room is created with
+`AudioType.MediaAudioType` instead of communication audio — no SCO, so the far end plays
+through the buds over **A2DP** (better quality than SCO) and capture falls to the **phone's
+built-in mic** (48 kHz, DFN3's native path). Works with any earbuds, brand-irrelevant.
 
-There is no free, ready-made, real-time, on-device target-speaker-extraction model to bundle (DeepFilterNet is general NS; it can't do target extraction). Two models must be produced developer-side, then dropped into the existing seam:
+- `LiveKitSessionManager.connect(..., useMediaAudio)` builds the overrides; LiveKit's
+  `AudioSwitchHandler` deliberately skips call routing for non-communication audio modes, so
+  nothing fights the system's media routing (verified in the 2.26.1 sources).
+- `CallManager.connectLiveKit` decides per call (`prefs.phoneMicWithBuds && isBluetoothAudioConnected()`),
+  publishes `CallState.phoneMicMode`; the in-call UI shows a "Phone mic · earbuds audio" chip and
+  hides the earpiece/speaker toggle (the system owns routing in media mode).
+- Mode is fixed for the duration of a call; buds connecting mid-call just start receiving A2DP.
+- **Verify on hardware:** echo (media mode loses the hardware voice-call AEC; WebRTC's software
+  AEC still runs and closed buds leak little — test far-end speech loud in buds), A2DP latency
+  (~100–300 ms playback side), volume keys control media volume, buds disconnecting mid-call
+  drops output to the loudspeaker (privacy surprise — known v1 tradeoff).
 
-1. **Speaker encoder** — reference sample → fixed-length d-vector (voice fingerprint). *Tractable*: strong pretrained models exist.
-2. **Target-speaker separation model** — (mic frame + target d-vector) → only that speaker, streaming/real-time. *The hard part*: needs training, a real-time-capable architecture, and mobile conversion.
+### 2. "Isolate a voice · beta" — speaker-gated suppression
 
-## How it plugs into the app (the seam already exists)
+Keep only the voice matching an **enrolled reference sample** (any speaker, not just the owner);
+remove background noise always, and duck *other people's voices* when the enrolled voice isn't
+the one speaking. All on-device, all from existing open models, **no training**:
 
-Two `TODO(P4-real)` hooks, no caller changes needed:
+```
+mic → DFN3 (noise removal, fullband, unchanged)
+        ├→ analysis copy @16 kHz → 1 s rolling lock-free ring
+        │    every 250 ms (background coroutine, never the audio thread):
+        │    Silero VAD → anyone speaking? → SpeakerEncoder (WeSpeaker CAM++) → cosine vs
+        │    enrolled d-vector → hysteresis state machine (open ≥0.45 / close ≤0.30 +
+        │    2 s hold-open since last strong match)
+        └→ per-sample smoothed gain: open 0 dB / closed −35 dB (attack 20 ms, release 250 ms)
+```
 
-- `audio/TargetVoiceProfile.computeEmbedding(referenceSample16kMono: FloatArray): FloatArray?`
-  → run the **speaker encoder**, return an L2-normalized `FloatArray(EMBEDDING_DIM)`.
-- `audio/SpeakerConditionedProcessor.processHop(hop: FloatArray)`
-  → run the **separation model** conditioned on `targetEmbedding` instead of the current `fallback.processHop(hop)` (DFN3).
+- **Models** (fetched by `mobile/scripts/fetch-ml-assets.ps1`, gitignored):
+  - sherpa-onnx AAR v1.13.3 (static-link-onnxruntime variant, Apache-2.0) — provides both the
+    `SpeakerEmbeddingExtractor` and Silero `Vad` Kotlin APIs; 16 KB-page-aligned `.so`s (verified).
+  - `wespeaker_en_voxceleb_CAM++.onnx` — speaker encoder, **dim=512** (verified at runtime), ~28 MB.
+  - `silero_vad.onnx` — VAD (MIT), ~0.6 MB.
+- **Enrollment** (`ui/EnrollVoiceScreen`, wired from Settings): read a ~20 s paragraph
+  (`EnrollmentRecorder`: AudioRecord VOICE_RECOGNITION 16 kHz mono → float). Quality gate
+  (`VoiceEnrollment.checkQuality`): ≥12 s voiced, <1 % clipping, and **self-consistency**
+  (embeddings of the two halves must cosine ≥0.70 — catches noisy/multi-talker samples). The raw
+  WAV is kept app-private (`filesDir/voice_enrollment/`) with `Prefs.targetVoiceModelVersion`, so
+  a future encoder swap silently recomputes the stored d-vector (`VoiceEnrollment.recomputeIfStale`
+  at app start) — users never re-enroll. Nothing ever leaves the device.
+- **Fail-open everywhere:** no enrollment / model load failure / non-integer capture rate /
+  any tick exception → gate stays open, i.e. plain DFN3. The bridge's watchdog + exception
+  bypass ("NS can never break a call") is unchanged; `processHop` only feeds a ring and applies
+  a gain (no allocation, no locks, no inference on the realtime thread).
+- **Honest v1 limits** (accepted): an interferer's first ~0.5 s leaks before the gate closes;
+  simultaneous overlap is not separated (background talker rides at DFN3 level while the target
+  speaks); same-gender similar voices are the hard case — retune `SpeakerGate`'s thresholds with
+  the debug overlay (shows live `gate/vad/cos/gain`).
+- **Fixed en route:** `NoiseSuppression.captureProcessorFor` now applies
+  `prefs.targetVoiceEmbedding` on *every* call setup, not only when the processor is rebuilt —
+  re-enrolling while Isolate was already selected used to never reach the live processor.
 
-Already wired around these: `SuppressionEngine.TARGET_SPEAKER`, the `CaptureProcessorBridge` (10 ms float frames, ring buffers, watchdog, A/B bypass — the model gets clean fixed-size hops and any failure safely bypasses), `Prefs.targetVoiceName/targetVoiceEmbedding` (local-only storage), and the Settings chooser. The bridge already resamples to whatever the model wants (see DfnNoiseProcessor for the 48 kHz pattern).
+### Emulator verification (2026-07-07, x86_64, API 36)
 
-## Model choices (evaluate at build time)
+- Encoder loads, dim=512, deterministic (cos(same input)=1.0), discriminates (cos(buzz,noise)=0.19).
+- Silero VAD loads; correctly scores synthetic non-speech low (0.02–0.06).
+- Full chain `SpeakerConditionedProcessor` (DFN3 @16 kHz ×3 resample + gate feed + ramp):
+  **454 µs/hop avg vs the 10 000 µs watchdog budget**.
+- Enrollment UI: record → stop → quality gate correctly rejects a silent take → retry.
+- Release APK builds; `zipalign -c -P 16` passes; 202 MB universal (arm64-v8a+x86_64; ship as AAB).
+- `MlSelfTest` (debug builds only) logs all of the above at app start — keep until the Pixel
+  bring-up is done, then delete.
 
-**Speaker encoder (sample → d-vector):**
-- **ECAPA-TDNN** (SpeechBrain `spkrec-ecapa-voxceleb`) — SOTA-ish, ~20 MB, exportable to ONNX/TFLite. Recommended.
-- Resemblyzer / GE2E d-vector — smaller/simpler, lower accuracy.
-- Output: 192–256-d vector; set `TargetVoiceProfile.EMBEDDING_DIM` to match.
+### Remaining: real-device validation (needs the Pixel + Realme buds + a second phone)
 
-**Target-speaker separation / masking (mixture + d-vector → target):**
-- **VoiceFilter-Lite** (Google) — designed exactly for on-device streaming enhancement (mask over log-mel/STFT, conditioned on d-vector). No official weights — reimplement + train.
-- **TD-SpeakerBeam** (time-domain SpeakerBeam) — strong open recipe (Asteroid/ESPnet), heavier; may need pruning for phone real-time.
-- **Personalized DeepFilterNet** — extend DFN with a speaker-conditioning branch; benefits from reusing the DFN runtime already integrated.
-- Prefer a **masking / spectral** model (cheaper, phase-preserving) over full time-domain for a phone real-time budget.
+1. Phase A A/B in a noisy room: call with buds, toggle off (SCO/earbud mic baseline) vs on
+   (48 kHz phone mic + DFN3, buds on A2DP) — judge at the callee; overlay `rate` shows which
+   path is live (SCO 16 kHz vs builtin 48 kHz). Echo/latency/volume checks above.
+2. Enroll a real voice; two same-voice enrollments should cosine ≥0.8, different voices ≤0.5
+   (log line in `VoiceEnrollment`).
+3. Gate matrix: target alone (no regression) · target silent + other talker (ducks ≤0.5 s) ·
+   both talking (target survives via hold-open) · TV/music (DFN3 handles) · same-gender
+   interferer (tune θ) · Hindi + English · 10 min endurance (overlay p95, battery).
+4. Retune `SpeakerGate.COSINE_OPEN/CLOSE/HOLD_OPEN_MS/FLOOR_DB` from overlay observations.
 
-## Training (developer-side, one time — users never train)
+---
 
-- **Hardware**: the GTX 1070 (8 GB) is enough for a compact streaming model; rent a bigger GPU if scaling up.
-- **Data**: clean speech (LibriSpeech / VoxCeleb / VCTK) + interfering speakers + noise (DNS-Challenge, MUSAN, WHAM!). Build mixtures: `target + interferer(s) + noise`, condition on the target speaker's *separate* enrollment utterance's d-vector. RIRs for reverb realism.
-- **Objective**: SI-SDR (time-domain) or spectral/mask loss (magnitude + optional phase-sensitive); add an asymmetric loss (VoiceFilter-Lite trick) to bias toward *not* suppressing the target.
-- **Constraints to train for**: streaming (causal or small look-ahead), 48 kHz (or 16 kHz then upsample — match the app's capture path), the 10 ms hop the bridge feeds.
-- **Metrics**: SI-SDRi and target-vs-interferer suppression on held-out mixtures; word-error-rate of the target through the model; a subjective A/B.
+## v2 appendix — trained target-speaker separation (deferred)
 
-## On-device runtime
+v1 gates in time; it cannot separate simultaneous overlap. The upgrade path (researched
+2026-07, all facts verified then):
 
-- **Format**: TFLite (LiteRT) or ONNX Runtime Mobile, NNAPI/GPU delegate. Bundle like DFN's AAR ships `libdf.so` — model weights in `assets/`, loaded once (async, like `NativeDeepFilterNet`).
-- **Budget**: each hop must finish well inside the realtime budget (the bridge watchdog auto-bypasses if not — see `CaptureProcessorBridge`). Profile on a real device; the `NoiseDebugOverlay` already shows µs/hop + p95.
-- **Encoder** runs once per enrollment (not per frame) — cost irrelevant.
-
-## Enrollment UX (build alongside the model)
-
-- Default **self-enroll**: a one-time "record yourself for ~15–30 s reading a prompt" screen → `computeEmbedding` → store as the target profile (name defaults to the user's own name). Re-recordable if a different person will use the phone.
-- Wire the existing disabled "Add a voice sample" button in `SettingsScreen` to this flow; show the stored profile name.
-- Keep everything on-device: sample + d-vector never leave the phone (privacy is a selling point).
-
-## Multi-target (later, optional)
-
-Design already allows storing multiple named profiles (make `Prefs` hold a list). Keeping N voices = run the separation model N times per hop and mix, so cost scales linearly — cap at ~2–3 targets to stay within the realtime budget. Averaging d-vectors into one "group" fingerprint does **not** work (it matches none cleanly). Ship single-target first.
-
-## Step-by-step to make it live
-
-1. Pick + export the **speaker encoder** to TFLite; implement `TargetVoiceProfile.computeEmbedding`; set `EMBEDDING_DIM`.
-2. Build the **enrollment screen**; store the d-vector via `Prefs.targetVoiceEmbedding`.
-3. Train the **separation model** (start from an open recipe; VoiceFilter-Lite-style masking); convert to TFLite; bundle in `assets/`.
-4. Implement `SpeakerConditionedProcessor.processHop` to run it conditioned on `targetEmbedding` (mirror `DfnNoiseProcessor`'s buffer/resample handling); keep the DFN3 fallback when no target is enrolled.
-5. Flip the Settings copy from "coming soon" to enrolled/active; keep the A/B overlay for tuning.
-6. Verify on two real devices: enroll voice A on the caller; with another person talking nearby, confirm only A reaches the callee; A/B against DFN3 and against bypass; watch CPU/latency in the overlay.
-
-## Guardrails
-
-- Never regress Tier A: with no target enrolled or on any model error/timeout, fall back to DFN3 (already the bridge's behavior).
-- Keep the model optional and toggleable (`SuppressionEngine`) — some users/devices will prefer general suppression.
+- **No off-the-shelf streaming on-device TSE model with usable weights exists.** WeSep
+  (wenet-e2e, toolkit with pBSRNN/pDPCCN/Spex+ recipes + WeSpeaker conditioning + on-the-fly
+  mixing) has no released checkpoints; UW's LookOnceToHear (CHI'24; 8 ms chunks in 6.24 ms on
+  embedded CPU) is binaural-input and CC BY-NC-SA (non-commercial — architecture reference only,
+  never ship its weights); pDeepFilterNet2 (Orosound/Télécom Paris, ICASSP'25) published no code.
+- Plan if pursued: train a **causal separator at 16 kHz** (WeSep pBSRNN recipe made causal, or a
+  VF-Lite-style uni-GRU masker; 10 ms hop) conditioned on **the same WeSpeaker encoder the app
+  ships** (embedding-space compatibility is why CAM++ was chosen for v1). Data: LibriSpeech +
+  VCTK + DNS5 personalized-track + MUSAN + RIRs (avoid WHAM! — CC BY-NC). Train on the GTX 1070
+  for bring-up, rent a 4090 (~$30–60) for the real run. Export ONNX with explicit recurrent-state
+  tensors; verify streaming parity vs offline; INT8 dynamic quant; run via ONNX Runtime Mobile
+  (or through the already-bundled sherpa onnxruntime). It replaces the gate inside
+  `SpeakerConditionedProcessor.processHop` with zero caller changes; enrolled voices carry over
+  thanks to the WAV + `targetVoiceModelVersion` recompute hook.

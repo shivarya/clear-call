@@ -22,6 +22,7 @@ import com.clearcall.core.AuthState
 import com.clearcall.core.Prefs
 import com.clearcall.security.BiometricGate
 import com.clearcall.ui.CallScreen
+import com.clearcall.ui.EnrollVoiceScreen
 import com.clearcall.ui.HomeScreen
 import com.clearcall.ui.LockedScreen
 import com.clearcall.ui.ScanQrScreen
@@ -29,7 +30,7 @@ import com.clearcall.ui.SettingsScreen
 import com.clearcall.ui.SignInScreen
 import com.clearcall.ui.theme.ClearCallTheme
 
-private enum class Screen { HOME, SCAN, SETTINGS }
+private enum class Screen { HOME, SCAN, SETTINGS, ENROLL_VOICE }
 
 class MainActivity : FragmentActivity() {
 
@@ -92,7 +93,14 @@ private fun AppRoot() {
             onBack = { screen = Screen.HOME },
             onCodeScanned = { code -> scannedCode = code; screen = Screen.HOME },
         )
-        screen == Screen.SETTINGS -> SettingsScreen(onBack = { screen = Screen.HOME })
+        screen == Screen.SETTINGS -> SettingsScreen(
+            onBack = { screen = Screen.HOME },
+            onEnrollVoice = { screen = Screen.ENROLL_VOICE },
+        )
+        screen == Screen.ENROLL_VOICE -> EnrollVoiceScreen(
+            onDone = { screen = Screen.SETTINGS },
+            onBack = { screen = Screen.SETTINGS },
+        )
         else -> HomeScreen(
             onOpenScan = { screen = Screen.SCAN },
             onOpenSettings = { screen = Screen.SETTINGS },

@@ -24,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,17 +42,19 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.DisposableEffect
 import com.clearcall.audio.SuppressionEngine
+import com.clearcall.audio.VoiceEnrollment
 import com.clearcall.core.Prefs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onEnrollVoice: () -> Unit = {}) {
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
 
     var nsEnabled by remember { mutableStateOf(prefs.noiseSuppressionEnabled) }
     var engine by remember { mutableStateOf(prefs.suppressionEngine) }
     var atten by remember { mutableFloatStateOf(prefs.attenuationLimitDb) }
+    var phoneMicWithBuds by remember { mutableStateOf(prefs.phoneMicWithBuds) }
 
     // Re-check battery-optimization exemption whenever we return to this screen (the user may
     // have toggled it in the system dialog we launch).
@@ -119,18 +122,28 @@ fun SettingsScreen(onBack: () -> Unit) {
                             )
                         }
                         if (engine == SuppressionEngine.TARGET_SPEAKER) {
-                            val target = prefs.targetVoiceName
+                            var targetName by remember { mutableStateOf(prefs.targetVoiceName) }
                             Text(
-                                if (target != null) "Keeping only: $target" else "No voice sample added yet.",
+                                targetName?.let { "Keeping only: $it" } ?: "No voice sample added yet.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Text(
-                                "Record a short sample of the voice to keep (yours or anyone's) — the app removes " +
-                                    "every other voice and background. Uses general suppression until the model ships.",
+                                "Record a short sample of the voice to keep (yours or anyone's) — noise is removed " +
+                                    "and other voices are quieted whenever that voice isn't speaking.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Button(enabled = false, onClick = {}) { Text("Add a voice sample (coming soon)") }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Button(onClick = onEnrollVoice) {
+                                    Text(if (targetName != null) "Re-record voice sample" else "Add a voice sample")
+                                }
+                                if (targetName != null) {
+                                    TextButton(onClick = {
+                                        VoiceEnrollment.clear(context, prefs)
+                                        targetName = null
+                                    }) { Text("Remove") }
+                                }
+                            }
                         }
                         Text("Strength: ${atten.toInt()} dB", style = MaterialTheme.typography.bodySmall)
                         Slider(
@@ -139,6 +152,33 @@ fun SettingsScreen(onBack: () -> Unit) {
                             onValueChangeFinished = { prefs.attenuationLimitDb = atten },
                             valueRange = 20f..100f,
                             steps = 7,
+                        )
+                    }
+                }
+            }
+
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("With earbuds, use the phone's microphone", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Earbud mics pick up much more noise. Keep listening through your earbuds " +
+                                    "while the phone's mic captures your voice — keep the phone within arm's reach. " +
+                                    "Applies to your next call.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Switch(
+                            checked = phoneMicWithBuds,
+                            onCheckedChange = {
+                                phoneMicWithBuds = it
+                                prefs.phoneMicWithBuds = it
+                            },
                         )
                     }
                 }

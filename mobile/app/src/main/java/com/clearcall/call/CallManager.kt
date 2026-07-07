@@ -197,7 +197,23 @@ object CallManager {
      * setCommunicationDevice API (minSdk 31). Best-effort and reconciled with LiveKit's own
      * AudioSwitchHandler on real hardware — needs a device to verify Bluetooth interplay.
      */
+    /** True when any Bluetooth audio output (classic A2DP/SCO or LE Audio) is connected. */
+    private fun isBluetoothAudioConnected(): Boolean {
+        val am = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return runCatching {
+            am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+            }
+        }.getOrDefault(false)
+    }
+
     fun toggleSpeaker() {
+        // In media-audio mode the system owns routing (A2DP ↔ loudspeaker by BT presence);
+        // the communication-device API doesn't apply. The UI hides the toggle in this mode.
+        if (CallState.phoneMicMode.value) return
         val am = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val newOn = !CallState.speakerOn.value
         runCatching {
@@ -229,9 +245,15 @@ object CallManager {
             launch { session.remoteLeft.collect { hangup() } }
         }
         val nsProcessor = NoiseSuppression.captureProcessorFor(prefs)
+        // "Phone mic with earbuds": with buds connected, run the call as media audio — the buds
+        // keep playing over A2DP while the phone's own (far better) mic captures the near end.
+        // Decided once per call; a mid-call buds connect just starts receiving A2DP.
+        val useMediaAudio = prefs.phoneMicWithBuds && isBluetoothAudioConnected()
+        CallState.setPhoneMicMode(useMediaAudio)
+        if (useMediaAudio) Log.i(TAG, "Bluetooth audio detected — using media-audio mode (phone mic + A2DP out)")
         scope.launch {
             try {
-                session.connect(url, token, nsProcessor)
+                session.connect(url, token, nsProcessor, useMediaAudio)
                 // Callee: advertise acceptance via a participant attribute (cross-platform answer
                 // signal for a future iOS caller; Android callers use room-join, see LiveKitSessionManager).
                 if (advertiseAnswered) session.advertiseAnswered()
