@@ -4,9 +4,11 @@ This is a self-contained plan for building the **native iOS ClearCall app** and 
 
 Written so another developer (or Claude Code on a Mac) can execute it end-to-end. The backend is already iOS-ready (see "Backend contract"); nothing on the server or Android side needs to change first, except providing an Apple APNs key.
 
-**Updated 2026-07-07** for two Android-side features shipped since this plan was first written — both change what "parity" means for iOS, see §7a and §7b:
+**Updated 2026-07-07** for Android-side changes shipped since this plan was first written — they change what "parity" means for iOS:
 1. **"Isolate a voice" (Tier B) v1** — Android now ships a real (if v1/beta) implementation: DeepFilterNet3 + an enrolled-speaker gate (WeSpeaker embeddings + Silero VAD via sherpa-onnx, zero training). iOS does **not** need to build an equivalent — see §7a for why Apple's Voice Isolation already covers most of the same ground, and what it doesn't.
 2. **"Phone mic with earbuds" mode** — Android now avoids Bluetooth SCO with earbuds connected (routes call audio as media/A2DP so the phone's own mic captures the near end instead of the earbud's noisier one). iOS has the same underlying SCO-vs-A2DP tradeoff; §7b sketches the iOS analog (not yet built — flag it for the Mac session that starts P5).
+3. **Calling verified end-to-end + device-registration hardening (§6a)** — the first real 2-device call now works. Two backend/registration lessons the iOS app must respect: (a) a device is only callable once it has an **active `devices` row**, and registration must be **retried on every app launch** (not just at sign-in) or a transient failure leaves the user permanently uncallable; (b) **field-name mismatch — the *deployed* production backend still requires `fcmToken`** (the P4.5 backend that also accepts `pushToken` + adds the `platform` column is committed but **not yet deployed** — deploy it before the iOS app). Android currently bridges this by sending **both** `fcmToken` and `pushToken`; the iOS app should do the same until the P4.5 backend is live, then it can send `pushToken` + `platform:"ios"` alone. Register the PushKit token on launch and on token change.
+4. **In-call audio output picker** — Android added a manual earpiece/speaker/Bluetooth/wired picker (it lacked one). **iOS gets this for free**: CallKit's system call UI and the Control Center / route button handle audio routing; do **not** build a custom picker — optionally surface `AVRoutePickerView` if a bring-your-own-UI screen needs it.
 
 ---
 
@@ -22,6 +24,8 @@ Written so another developer (or Claude Code on a Mac) can execute it end-to-end
 | Call transport | LiveKit Android | **LiveKit Swift SDK** |
 | Incoming-call UI | self-managed Telecom + full-screen notif | **CallKit** |
 | Ring wake | FCM data push | **PushKit VoIP push (APNs direct, NOT FCM)** |
+| Device register | FCM token → `/devices/register`, retried every launch | PushKit token → same endpoint, **retry every launch** (§6a) |
+| In-call audio route | manual picker (earpiece/speaker/BT/wired) | **CallKit system UI handles it** — no custom picker |
 | Noise removal | DeepFilterNet3 on uplink | **Apple Voice Isolation (system)** — no custom model |
 | Isolate a voice / suppress other talkers | v1 speaker gate (WeSpeaker + Silero VAD via sherpa-onnx; enrolled d-vector, zero training) | **not built — likely not needed**, see §7a |
 | Earbuds: avoid noisy earbud mic | media-audio mode (no SCO; A2DP out + phone mic in) | **not built yet**, see §7b |
@@ -93,6 +97,14 @@ Capabilities to enable in the target: **Push Notifications**, **Background Modes
 - **Outgoing**: `POST /calls` → start a `CXStartCallAction` → connect to the LiveKit room (ringback) → mark connected when the callee's `state=answered` attribute appears → `AVAudioSession` activated via `CXProvider didActivate` (LiveKit `AudioManager` engine availability toggled there per LiveKit's CallKit guide).
 - **Incoming**: VoIP push → **immediately** `provider.reportNewIncomingCall(...)` → on `CXAnswerCallAction`, `POST /calls/{id}/answer`, join the room, set `state=answered`; on `CXEndCallAction` before answering, `POST /calls/{id}/decline`. If a `cancel` data message / stale ring arrives while ringing, end the CallKit call.
 - **End**: `CXEndCallAction` → `POST /calls/{id}/end` (or `/cancel` if never answered).
+
+## 6a. Device registration — don't repeat Android's bug
+
+A user is only reachable once they have an **active `devices` row**; `POST /calls` rejects with **409 "Callee has no registered device"** otherwise. Android shipped two bugs here that cost real debugging (2026-07-07) — build iOS to avoid both:
+
+- **Register on every launch, not just at sign-in.** Android originally registered only inside the sign-in flow, wrapped in a silent try/catch, so a transient failure (token not ready, a network blip) left the user *permanently* uncallable with no retry. Fix was to also register on every authenticated app start (the backend upserts by token, so it's idempotent). On iOS: call `/devices/register` from `PKPushRegistry`'s `didUpdate pushCredentials` **and** on every launch once signed in.
+- **Field name**: the **deployed** production backend still requires `fcmToken` (the committed P4.5 backend that accepts `pushToken` + adds `devices.platform` is **not yet deployed**). Until it is, send **both** `fcmToken` and `pushToken` (as Android now does); once P4.5 is live you can send `pushToken` + `platform:"ios"` alone. Deploy P4.5 before shipping iOS — APNs routing needs the `platform` column and `utils/push.php`/`apns.php`.
+- **Surface failures.** A call that can't be placed should show the user *something* — Android's tap looked like a dead button until the 409 was surfaced as a toast. Do the equivalent in `CallView` (an alert/inline error) when `POST /calls` fails.
 
 ---
 
