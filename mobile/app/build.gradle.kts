@@ -125,11 +125,12 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
 
     // QR scan (camera) + gallery decode: CameraX + ML Kit barcode scanning.
-    // CameraX pinned to 1.3.x — 1.4+/1.6+ require AGP 8.9+, we're on 8.7.3.
-    implementation("androidx.camera:camera-core:1.3.4")
-    implementation("androidx.camera:camera-camera2:1.3.4")
-    implementation("androidx.camera:camera-lifecycle:1.3.4")
-    implementation("androidx.camera:camera-view:1.3.4")
+    // CameraX 1.4.2 ships 16 KB-page-aligned native libs (1.3.4's libimage_processing_util_jni.so
+    // was 4 KB-aligned and failed Android 15+'s 16 KB requirement); needs AGP 8.9+.
+    implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     // Biometric app lock
