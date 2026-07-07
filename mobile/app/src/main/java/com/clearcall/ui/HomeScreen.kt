@@ -31,8 +31,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.clearcall.auth.signOut
 import com.clearcall.call.CallManager
+import com.clearcall.call.CallState
 import com.clearcall.core.Prefs
 import com.clearcall.net.ApiClient
 import com.clearcall.net.UserSummary
@@ -90,6 +93,18 @@ fun HomeScreen(
     // A code scanned via the camera screen arrives here as prefillCode; load it once.
     LaunchedEffect(prefillCode) {
         prefillCode?.let { addCode = it.uppercase(); onPrefillConsumed() }
+    }
+
+    // Placing a call from here can fail before any CallScreen shows (e.g. the callee has no
+    // registered device / isn't signed in). That error lands on CallState.errorMessage, which
+    // only CallScreen renders — so surface it here as a toast, otherwise the tap looks like a
+    // no-op. Clear it after showing so it doesn't re-fire.
+    val callError by CallState.errorMessage.collectAsState()
+    LaunchedEffect(callError) {
+        callError?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            CallState.setError(null)
+        }
     }
 
     fun refresh() {
