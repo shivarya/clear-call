@@ -1,6 +1,7 @@
 package com.clearcall.call
 
 import android.content.Context
+import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.telecom.DisconnectCause
@@ -125,6 +126,7 @@ object CallManager {
                 connectLiveKit(result.livekitUrl, result.token, advertiseAnswered = true)
                 CallState.setPhase(CallPhase.ACTIVE)
                 OngoingCallService.start(appContext)
+                startAudioOutputWatch()
             } catch (e: ApiException) {
                 CallState.setError(e.message)
                 teardownConnection(DisconnectCause.ERROR)
@@ -192,11 +194,6 @@ object CallManager {
         CallState.setMuted(newMuted)
     }
 
-    /**
-     * Route call audio to the loudspeaker vs the earpiece using the modern
-     * setCommunicationDevice API (minSdk 31). Best-effort and reconciled with LiveKit's own
-     * AudioSwitchHandler on real hardware — needs a device to verify Bluetooth interplay.
-     */
     /** True when any Bluetooth audio output (classic A2DP/SCO or LE Audio) is connected. */
     private fun isBluetoothAudioConnected(): Boolean {
         val am = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -210,29 +207,101 @@ object CallManager {
         }.getOrDefault(false)
     }
 
-    fun toggleSpeaker() {
-        // In media-audio mode the system owns routing (A2DP ↔ loudspeaker by BT presence);
-        // the communication-device API doesn't apply. The UI hides the toggle in this mode.
-        if (CallState.phoneMicMode.value) return
-        val am = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val newOn = !CallState.speakerOn.value
-        runCatching {
-            if (newOn) {
-                val speaker = am.availableCommunicationDevices
-                    .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                if (speaker != null) am.setCommunicationDevice(speaker)
-            } else {
-                am.clearCommunicationDevice()
-            }
+    // ---- In-call audio output selection (earpiece / speaker / Bluetooth / wired) ----
+
+    private val audioManager get() = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var audioDeviceCallback: AudioDeviceCallback? = null
+
+    /**
+     * Publish the current set of selectable audio outputs and which one is active, using the
+     * modern setCommunicationDevice API (minSdk 31). Called when a call goes active and whenever
+     * devices are plugged/unplugged mid-call. No-op in phone-mic (media-audio) mode, where the
+     * system owns routing (audio follows the earbuds' A2DP).
+     */
+    fun refreshAudioOutputs() {
+        if (CallState.phoneMicMode.value) {
+            CallState.setAudioOutputs(emptyList())
+            return
         }
-        CallState.setSpeakerOn(newOn)
+        val am = audioManager
+        val outputs = runCatching {
+            am.availableCommunicationDevices
+                .filter { it.type in AUDIO_OUTPUT_TYPES }
+                .distinctBy { it.type }
+                .map { AudioOutput(it.id, it.type, audioLabel(it.type, it.productName?.toString())) }
+                .sortedBy { AUDIO_OUTPUT_ORDER.indexOf(it.type) }
+        }.getOrDefault(emptyList())
+        CallState.setAudioOutputs(outputs)
+        val currentId = runCatching { am.communicationDevice?.id }.getOrNull()
+        CallState.setSelectedAudioOutput(currentId ?: outputs.firstOrNull()?.id)
+    }
+
+    /** Route call audio to the output with this [AudioOutput.id]. */
+    fun selectAudioOutput(id: Int) {
+        runCatching {
+            val am = audioManager
+            val device = am.availableCommunicationDevices.firstOrNull { it.id == id } ?: return
+            am.setCommunicationDevice(device)
+            CallState.setSelectedAudioOutput(id)
+            CallState.setSpeakerOn(device.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+        }.onFailure { Log.w(TAG, "Failed to select audio output $id", it) }
+    }
+
+    private fun startAudioOutputWatch() {
+        refreshAudioOutputs()
+        // LiveKit sets MODE_IN_COMMUNICATION slightly after the call goes active; re-query once
+        // it has, so Bluetooth/wired outputs that only appear in communication mode show up.
+        scope.launch { delay(700); refreshAudioOutputs() }
+        if (audioDeviceCallback != null) return
+        val cb = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) = refreshAudioOutputs()
+            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) = refreshAudioOutputs()
+        }
+        audioDeviceCallback = cb
+        runCatching { audioManager.registerAudioDeviceCallback(cb, null) }
     }
 
     private fun clearAudioRouting() {
-        runCatching {
-            (appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager).clearCommunicationDevice()
-        }
+        audioDeviceCallback?.let { runCatching { audioManager.unregisterAudioDeviceCallback(it) } }
+        audioDeviceCallback = null
+        runCatching { audioManager.clearCommunicationDevice() }
     }
+
+    private fun audioLabel(type: Int, name: String?): String = when (type) {
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Earpiece"
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Speaker"
+        AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired headset"
+        AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_DEVICE -> "USB audio"
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET ->
+            name?.takeIf { it.isNotBlank() } ?: "Bluetooth"
+        AudioDeviceInfo.TYPE_HEARING_AID -> "Hearing aid"
+        else -> "Audio"
+    }
+
+    private val AUDIO_OUTPUT_TYPES = setOf(
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_USB_DEVICE,
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_HEARING_AID,
+    )
+
+    // Display order: earpiece, speaker, wired, USB, Bluetooth, BLE, hearing aid.
+    private val AUDIO_OUTPUT_ORDER = listOf(
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_USB_DEVICE,
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_HEARING_AID,
+    )
 
     // ---- Internals ----
 
@@ -272,6 +341,7 @@ object CallManager {
             activeConnection?.setActive()
             CallState.setPhase(CallPhase.ACTIVE)
             OngoingCallService.start(appContext)
+            startAudioOutputWatch()
         }
     }
 

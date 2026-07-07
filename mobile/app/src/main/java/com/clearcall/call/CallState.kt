@@ -14,6 +14,9 @@ data class CallInfo(
     val isIncoming: Boolean,
 )
 
+/** A selectable in-call audio output route (earpiece, speaker, Bluetooth, wired…). */
+data class AudioOutput(val id: Int, val type: Int, val label: String)
+
 /**
  * Process-wide call state, published by [CallManager] and observed by the UI, the Telecom
  * layer, and the ongoing-call notification alike — mirrors clear-mic-router's RouterState.
@@ -39,6 +42,13 @@ object CallState {
     private val _phoneMicMode = MutableStateFlow(false)
     val phoneMicMode: StateFlow<Boolean> = _phoneMicMode.asStateFlow()
 
+    /** Available in-call audio outputs and the currently selected one (by [AudioOutput.id]). */
+    private val _audioOutputs = MutableStateFlow<List<AudioOutput>>(emptyList())
+    val audioOutputs: StateFlow<List<AudioOutput>> = _audioOutputs.asStateFlow()
+
+    private val _selectedAudioOutputId = MutableStateFlow<Int?>(null)
+    val selectedAudioOutputId: StateFlow<Int?> = _selectedAudioOutputId.asStateFlow()
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -62,6 +72,14 @@ object CallState {
         _phoneMicMode.value = value
     }
 
+    fun setAudioOutputs(list: List<AudioOutput>) {
+        _audioOutputs.value = list
+    }
+
+    fun setSelectedAudioOutput(id: Int?) {
+        _selectedAudioOutputId.value = id
+    }
+
     fun setError(message: String?) {
         _errorMessage.value = message
     }
@@ -72,5 +90,7 @@ object CallState {
         _muted.value = false
         _speakerOn.value = false
         _phoneMicMode.value = false
+        _audioOutputs.value = emptyList()
+        _selectedAudioOutputId.value = null
     }
 }
