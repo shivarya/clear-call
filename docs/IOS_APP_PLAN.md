@@ -4,6 +4,10 @@ This is a self-contained plan for building the **native iOS ClearCall app** and 
 
 Written so another developer (or Claude Code on a Mac) can execute it end-to-end. The backend is already iOS-ready (see "Backend contract"); nothing on the server or Android side needs to change first, except providing an Apple APNs key.
 
+**Updated 2026-07-07** for two Android-side features shipped since this plan was first written — both change what "parity" means for iOS, see §7a and §7b:
+1. **"Isolate a voice" (Tier B) v1** — Android now ships a real (if v1/beta) implementation: DeepFilterNet3 + an enrolled-speaker gate (WeSpeaker embeddings + Silero VAD via sherpa-onnx, zero training). iOS does **not** need to build an equivalent — see §7a for why Apple's Voice Isolation already covers most of the same ground, and what it doesn't.
+2. **"Phone mic with earbuds" mode** — Android now avoids Bluetooth SCO with earbuds connected (routes call audio as media/A2DP so the phone's own mic captures the near end instead of the earbud's noisier one). iOS has the same underlying SCO-vs-A2DP tradeoff; §7b sketches the iOS analog (not yet built — flag it for the Mac session that starts P5).
+
 ---
 
 ## 0. What's the same vs different from Android
@@ -19,6 +23,8 @@ Written so another developer (or Claude Code on a Mac) can execute it end-to-end
 | Incoming-call UI | self-managed Telecom + full-screen notif | **CallKit** |
 | Ring wake | FCM data push | **PushKit VoIP push (APNs direct, NOT FCM)** |
 | Noise removal | DeepFilterNet3 on uplink | **Apple Voice Isolation (system)** — no custom model |
+| Isolate a voice / suppress other talkers | v1 speaker gate (WeSpeaker + Silero VAD via sherpa-onnx; enrolled d-vector, zero training) | **not built — likely not needed**, see §7a |
+| Earbuds: avoid noisy earbud mic | media-audio mode (no SCO; A2DP out + phone mic in) | **not built yet**, see §7b |
 | Call history | none (removed) | **none** — same parity decision, don't build one |
 
 **Why no DeepFilterNet on iOS:** iOS's Voice Isolation runs system-wide for any VoIP app using a `.playAndRecord` / `.voiceChat` audio session (which LiveKit uses). It's on-device, high quality, and user-toggled in Control Center. Re-implementing DFN would fight the OS for the voice-processing audio unit. So the iOS app *surfaces* Voice Isolation (a one-tap nudge to the mic-mode picker) rather than shipping its own model.
@@ -95,6 +101,56 @@ Capabilities to enable in the target: **Push Notifications**, **Background Modes
 - With LiveKit's `.playAndRecord`/`.voiceChat` session active, **Voice Isolation is available system-wide**; the user enables it in **Control Center → Mic Mode → Voice Isolation** during a call.
 - Surface it in-app: a "Reduce background noise" button calls `AVCaptureDevice.showSystemUserInterface(.microphoneModes)` to pop the mic-mode picker, and you can read `AVCaptureDevice.activeMicrophoneMode` to show whether it's on. Apple keeps the final toggle user-controlled — the app can nudge, not force.
 - That's the whole feature. No model, no capture hook, no enrollment.
+
+---
+
+## 7a. Do we need Android's "Isolate a voice" gate on iOS?
+
+Probably not, and if it's ever wanted, it's a much smaller lift than it was on Android. Context:
+
+- **Why Android needed custom engineering at all:** no ready-made on-device model exists that
+  takes "here's a reference sample of speaker X" and suppresses everyone else — that had to be
+  assembled from a speaker-embedding model (WeSpeaker) + VAD + a hysteresis gate (see
+  `docs/VOICE_ISOLATION_TIER_B_PLAN.md`). It's real engineering specifically because Android has
+  no OS-level equivalent.
+- **Apple already ships most of the underlying capability.** Voice Isolation (§7) is Apple's own
+  system-level model for "keep the phone owner's voice, suppress everything else including
+  nearby talkers and room noise" — during a `.voiceChat` session it actively down-weights other
+  people's speech, not just steady-state noise. For the common case (suppress background chatter
+  around *you*, the phone owner), turning it on already delivers what Android needed the gate for.
+- **The one thing Apple's feature can't do:** target an *arbitrary enrolled speaker* — Android's
+  gate lets you enroll anyone's voice (not just the owner) and keep only that one. Voice Isolation
+  is owner-only by design; there's no Apple API to condition it on a third-party voice sample.
+  This only matters if a user wants ClearCall to isolate *someone else's* voice on their phone
+  (e.g., handing the phone to another speaker) — a narrow case.
+- **If that case ever matters:** the same sherpa-onnx approach ports directly — it's a Kotlin/JVM
+  wrapper over a portable ONNX runtime; the underlying models (WeSpeaker CAM++, Silero VAD) have
+  official ONNX exports usable from Swift via ONNX Runtime's C/Objective-C API, or re-implemented
+  against Apple's own Sound Analysis / SNClassifySoundRequest for VAD. Until then: **don't build
+  it for iOS** — surfacing Voice Isolation (§7) is the right-sized feature.
+
+## 7b. Do we need Android's "phone mic with earbuds" mode on iOS?
+
+Likely yes, eventually — the underlying problem is platform-agnostic (Bluetooth earbuds negotiate
+a voice-call HFP/SCO link with a narrowband, noisier mic; the phone's own mic is better), but it
+hasn't been built or tested on iOS yet. Sketch for whoever picks this up:
+
+- **The iOS lever is `AVAudioSession` category options, not a LiveKit audio-type switch.** With
+  category `.playAndRecord`, the option `.allowBluetoothA2DP` lets *output* go over a connected
+  Bluetooth accessory's high-quality A2DP profile while *input* stays on the built-in mic — the
+  same SCO-avoidance trick as Android's `AudioType.MediaAudioType`, just expressed as a session
+  option instead of an audio mode. The option `.allowBluetooth` (HFP) is what pulls in the
+  earbud's mic; simply omitting it (while still allowing A2DP for output) is the fix.
+- **Caveat, unverified — check on a real device before shipping:** CallKit-managed calls
+  configure the audio session on the app's behalf via `provider(_:didActivate:)`, and some LiveKit
+  Swift SDK / CallKit integration examples default to `.allowBluetooth` for hands-free compatibility.
+  Confirm LiveKit's Swift SDK lets you override the category options it applies (or apply your own
+  after LiveKit configures the session, inside `didActivate`) before assuming this drops in cleanly.
+- **Same UX shape as Android:** a Settings toggle (default on) + an in-call indicator when the
+  mode is active; test echo (no hardware voice-call AEC in this path — confirm WebRTC's own AEC
+  still runs) and A2DP latency same as the Android checklist in `docs/VOICE_ISOLATION_TIER_B_PLAN.md`.
+- Not yet built. Flag for the Mac session that starts P5 — small addition once CallKit/LiveKit
+  wiring (§6) exists, since it's purely an `AVAudioSession` configuration detail.
 
 ---
 
