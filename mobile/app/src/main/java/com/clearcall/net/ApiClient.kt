@@ -101,7 +101,10 @@ class ApiClient(private val prefs: Prefs) {
 
     suspend fun registerDevice(fcmToken: String, deviceLabel: String) {
         val body = buildJsonObject {
+            // Send both names: newer backend reads `pushToken` (platform-neutral), the currently
+            // deployed production backend still requires `fcmToken`. Sending both is version-agnostic.
             put("pushToken", fcmToken)
+            put("fcmToken", fcmToken)
             put("platform", "android")
             put("deviceLabel", deviceLabel)
         }
